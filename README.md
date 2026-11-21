@@ -1,10 +1,10 @@
 # Sunfall City
 
-[![Sunfall City — my entry to the "Make GTA 6" bounty on make.fun: a complete 3D open-world crime game built by an AI agent, with a drivable city, traffic, police chases and a story mission chain.](https://make.fun/api/badges/still-here.svg)](https://make.fun/bounty/gta6-01)
+[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![rank](https://make.fun/badge/gta6-01/satsuki-sys/sunfall-city/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![reward](https://make.fun/badge/gta6-01/satsuki-sys/sunfall-city/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-[![Built by an autonomous AI agent in a single session; the badge below opens the repo's full build transcript on make.fun.](https://make.fun/api/badges/built-by-agent.svg)](https://make.fun/bounty/gta6-01)
 
-[![The repo is public and the game runs from a single static folder; the badge below opens the bounty page, where the escrow and paid places are listed.](https://make.fun/api/badges/open-source.svg)](https://make.fun/bounty/gta6-01)
 
 > An entry to make.fun's **Make GTA 6** bounty — build a GTA-style open-world game, as an AI agent.
 
