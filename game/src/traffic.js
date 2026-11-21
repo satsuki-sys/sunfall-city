@@ -1,7 +1,9 @@
 // Traffic: civilian cars that cruise the avenue grid on the correct side of
-// the road, choose turns at intersections, keep their distance from the car
-// ahead and honk when the player blocks them. Each driver is a small state
-// machine steering toward a point a little ahead on its lane.
+// the road, choose turns at intersections, follow the car ahead at a smooth
+// distance, slow down when cross traffic is moving through the junction in
+// front of them and honk when the player blocks them for too long. Each
+// driver is a small state machine steering toward a point a little ahead on
+// its lane, with its own patience for being stuck.
 
 import { avenueLines } from './config.js';
 import { angleDelta, clamp, dist2d } from './random.js';
@@ -35,6 +37,7 @@ export class TrafficDriver {
     }
     this.targetSpeed = rng.range(9, 14);
     this.blockedTime = 0;
+    this.patience = rng.range(2.2, 3.8); // seconds stuck before a honk
     car.driver = 'traffic';
   }
 
@@ -72,27 +75,46 @@ export class TrafficDriver {
     const want = Math.atan2(lookAhead.x - car.x, lookAhead.z - car.z);
     const steer = clamp(angleDelta(car.heading, want) * 2.2, -1, 1);
 
-    // Keep distance: anything slow in front within ~11 m means match its speed.
-    let throttle = car.speed < this.targetSpeed ? 0.75 : 0;
-    let brake = false;
+    // Car-following: ease toward a speed that holds a ~7 m gap to whatever is
+    // slow in front, instead of slamming between full throttle and full brake.
+    // A genuinely closing gap still gets the brake pedal.
     const fwdX = Math.sin(car.heading);
     const fwdZ = Math.cos(car.heading);
+    let desired = this.targetSpeed;
+    let brake = false;
     for (const other of world.cars) {
       if (other === car) continue;
       const relX = other.x - car.x;
       const relZ = other.z - car.z;
       const aheadDist = relX * fwdX + relZ * fwdZ;
       const sideDist = Math.abs(relX * fwdZ - relZ * fwdX);
-      if (aheadDist > 0 && aheadDist < 11 && sideDist < 2.4) {
-        if (car.speed > other.speed + 1) { throttle = 0; brake = car.speed > other.speed + 4; }
-        if (aheadDist < 6) { throttle = 0; brake = true; }
+      if (aheadDist > 0 && aheadDist < 16 && sideDist < 2.4) {
+        const follow = other.speed + Math.max(0, (aheadDist - 7) * 0.55);
+        if (follow < desired) desired = follow;
+        if (aheadDist < 5.5 || (aheadDist < 10 && car.speed > other.speed + 4.5)) brake = true;
       }
     }
 
-    // Blocked for a while? Honk about it.
-    if (brake || throttle === 0) {
+    // Junction caution: cross traffic moving through the intersection just
+    // ahead means easing off early rather than arriving at full speed.
+    if (toIntersection < 13) {
+      const ix = this.dirX !== 0 ? along + ahead : this.line;
+      const iz = this.dirX !== 0 ? this.line : along + ahead;
+      for (const other of world.cars) {
+        if (other === car) continue;
+        if (Math.abs(other.speed) > 1 && dist2d(other, { x: ix, z: iz }) < 10) {
+          if (desired > 5.5) desired = 5.5;
+          break;
+        }
+      }
+    }
+
+    const throttle = brake ? 0 : clamp((desired - car.speed) * 0.45, 0, 0.8);
+
+    // Blocked for longer than this driver can stand? Honk about it.
+    if (brake || throttle <= 0.01) {
       this.blockedTime += dt;
-      if (this.blockedTime > 2.4 && car.honkCooldown <= 0) {
+      if (this.blockedTime > this.patience && car.honkCooldown <= 0) {
         world.onHonk(car);
         car.honkCooldown = 4;
         this.blockedTime = 0;
