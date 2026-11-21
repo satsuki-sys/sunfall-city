@@ -1,7 +1,8 @@
-// Save data lives in localStorage: cash, story progress, taxi fares earned and
-// where the player left off. It is written on mission completions and pauses,
-// and read by the title screen's Continue button. Corrupt or missing data
-// simply means a fresh game.
+// Persistence, kept deliberately small: the save lives in localStorage and
+// holds cash, story progress, lifetime taxi fares and where the player left
+// off. It is written on mission completions and pauses, and read back by the
+// title screen's Continue button. Missing or corrupt data is not an error —
+// it simply means a fresh game.
 
 import { SAVE_KEY } from './config.js';
 
@@ -10,8 +11,8 @@ export function loadSave() {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    if (typeof data !== 'object' || data === null || typeof data.cash !== 'number') return null;
-    return data;
+    const usable = typeof data === 'object' && data !== null && typeof data.cash === 'number';
+    return usable ? data : null;
   } catch {
     return null;
   }
@@ -21,7 +22,7 @@ export function writeSave(data) {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch {
-    // Private mode or a full store: the game plays on unsaved.
+    // Private mode or a full store: play continues, just unsaved.
   }
 }
 

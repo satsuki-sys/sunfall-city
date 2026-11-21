@@ -1,7 +1,7 @@
-// Sunfall City itself: a sun-soaked coastal grid built procedurally from a seed —
-// pastel towers with lit windows, palm-lined avenues, named places of interest
-// with hand-lettered signs, a boardwalk, a beach and the sea to the south.
-// Everything is geometry and canvas textures made here; nothing is loaded.
+// Sunfall City itself: a sun-soaked coastal grid built procedurally — pastel
+// towers with lit windows, palm-lined avenues, named places of interest with
+// hand-lettered signs, a boardwalk, a beach and the sea to the south. All of
+// it is geometry and canvas textures made here; nothing is loaded from disk.
 
 import * as THREE from 'three';
 import { CITY, PALETTE, avenueLines, blockCentres } from './config.js';
@@ -16,6 +16,7 @@ export const POIS = {
   carLot:    { x: 132,  z: 176,  name: 'Shoreline Motors' },
 };
 
+/** Which block (by grid index "bi,bj") hosts which landmark, and how it looks. */
 const POI_BY_BLOCK = new Map([
   ['2,2', { poi: 'cafe', h: 11, tint: 0xf2b879 }],
   ['8,3', { poi: 'garage', h: 9, tint: 0x9fb7c9 }],
@@ -30,17 +31,19 @@ const SHOP_SIGNS = ['Palms Hotel', 'Surf & Sand', 'Banco del Sol', 'Cine Mar', '
 
 const CENTRES = blockCentres();
 
-/** Height of the walkable ground: sidewalks are raised slabs over the streets. */
+/** Height of the walkable ground at a point: block slabs sit 0.3 above the street. */
 export function groundHeightAt(x, z) {
   // The pier deck stands over the water at the Palms Pier.
   if (Math.abs(x - POIS.pier.x) < 5 && z > CITY.waterZ - 4 && z < CITY.waterZ + 48) return 0.7;
   if (z > CITY.beachZ - 8) return 0;
-  const cx = CENTRES[Math.max(0, Math.min(CITY.blocks - 1, Math.round((x + CITY.half - CITY.pitch / 2) / CITY.pitch)))];
-  const cz = CENTRES[Math.max(0, Math.min(CITY.blocks - 1, Math.round((z + CITY.half - CITY.pitch / 2) / CITY.pitch)))];
+  const nearest = (v) => CENTRES[Math.max(0, Math.min(CITY.blocks - 1, Math.round((v + CITY.half - CITY.pitch / 2) / CITY.pitch)))];
+  const cx = nearest(x);
+  const cz = nearest(z);
   if (Math.abs(x - cx) < 17 && Math.abs(z - cz) < 17) return 0.3;
   return 0;
 }
 
+/** A canvas wrapped as a texture; `draw` paints it. */
 function canvasTexture(w, h, draw) {
   const canvas = document.createElement('canvas');
   canvas.width = w;
@@ -52,7 +55,11 @@ function canvasTexture(w, h, draw) {
   return tex;
 }
 
-/** Facade: pale plaster with a grid of windows; the emissive twin lights some. */
+/**
+ * A building facade and its emissive twin. The facade pass paints pale plaster
+ * and a grid of windows, remembering which are lit; the emissive pass repaints
+ * exactly those windows warm, so towers glow after dark.
+ */
 function facadeTextures() {
   const cols = 6;
   const rows = 12;
@@ -83,6 +90,7 @@ function facadeTextures() {
   return { facade, emissive };
 }
 
+/** A shopfront sign: centred serif lettering on a dark board. */
 function signTexture(text, bg, fg) {
   const tex = canvasTexture(512, 112, (g) => {
     g.fillStyle = bg;
@@ -97,6 +105,7 @@ function signTexture(text, bg, fg) {
   return tex;
 }
 
+/** Palm fronds, drawn as nine arcing strokes on a transparent canvas. */
 function frondTexture() {
   const tex = canvasTexture(128, 128, (g) => {
     g.clearRect(0, 0, 128, 128);
@@ -126,6 +135,7 @@ export function buildCity(scene, rng) {
     map: facade, emissive: 0xffb45e, emissiveIntensity: 0.38, emissiveMap: emissive,
   }));
   const roofMat = new THREE.MeshStandardMaterial({ color: 0x8a6f55, roughness: 1 });
+  // One unit box, pivoted at its base, scaled into every building.
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
   boxGeo.translate(0, 0.5, 0);
 
@@ -137,6 +147,7 @@ export function buildCity(scene, rng) {
     mesh.receiveShadow = true;
     scene.add(mesh);
     colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+    // Tall buildings sometimes grow a rooftop box.
     if (h > 18 && rng.chance(0.7)) {
       const prop = new THREE.Mesh(boxGeo, roofMat);
       prop.scale.set(w * 0.3, rng.range(1, 2.4), d * 0.3);
@@ -158,7 +169,7 @@ export function buildCity(scene, rng) {
     scene.add(sign);
   };
 
-  // Ground, roads, sidewalks.
+  // --- Ground cover: grass under everything, roads on top ---------------------
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(1700, 1700), new THREE.MeshStandardMaterial({ color: PALETTE.grass, roughness: 1 }));
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.05;
@@ -192,13 +203,14 @@ export function buildCity(scene, rng) {
     v.position.set(a, 0, 0);
     v.receiveShadow = true;
     scene.add(v);
-    const h = new THREE.Mesh(roadGeoH, roadMatH);
-    h.rotation.x = -Math.PI / 2;
-    h.position.set(0, 0.01, a);
-    h.receiveShadow = true;
-    scene.add(h);
+    const hMesh = new THREE.Mesh(roadGeoH, roadMatH);
+    hMesh.rotation.x = -Math.PI / 2;
+    hMesh.position.set(0, 0.01, a);
+    hMesh.receiveShadow = true;
+    scene.add(hMesh);
   }
 
+  // --- Sidewalk slabs, one per block ------------------------------------------
   const slabMat = new THREE.MeshStandardMaterial({ color: PALETTE.sidewalk, roughness: 1 });
   const slabGeo = new THREE.BoxGeometry(34, 0.3, 34);
   const centres = blockCentres();
@@ -211,12 +223,11 @@ export function buildCity(scene, rng) {
     }
   }
 
-  // Buildings, block by block; POI blocks get one landmark and a sign.
+  // --- Buildings, block by block; POI blocks get one landmark and its signs ---
   let shopIndex = 0;
   centres.forEach((cx, bi) => {
     centres.forEach((cz, bj) => {
-      const key = `${bi},${bj}`;
-      const poiDef = POI_BY_BLOCK.get(key);
+      const poiDef = POI_BY_BLOCK.get(`${bi},${bj}`);
       if (poiDef) {
         const poi = Object.values(POIS).find((p) => p.x === cx && p.z === cz);
         const mat = new THREE.MeshStandardMaterial({
@@ -224,7 +235,7 @@ export function buildCity(scene, rng) {
           emissive: 0xffb45e, emissiveIntensity: 0.4, emissiveMap: emissive,
         });
         if (poiDef.poi === 'carLot') {
-          // An open lot: low office hut only, the cars are the scenery.
+          // An open lot: a low office hut only — the cars are the scenery.
           addBuilding(cx - 10, cz - 10, 9, poiDef.h, 8, mat);
           addSign(poi.name, cx - 10, 4.6, cz - 5.8, 0, 10);
         } else {
@@ -234,6 +245,7 @@ export function buildCity(scene, rng) {
         }
         return;
       }
+      // Ordinary blocks roll one of three layouts.
       const pattern = rng.next();
       const mat = () => rng.pick(materials);
       if (pattern < 0.34) {
@@ -253,7 +265,7 @@ export function buildCity(scene, rng) {
     });
   });
 
-  // Palms: beach row plus sidewalk corners.
+  // --- Palms: a beach row, plus sidewalk corners here and there --------------
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8a6f55, roughness: 1 });
   const trunkGeo = new THREE.CylinderGeometry(0.14, 0.22, 4.6, 6);
   trunkGeo.translate(0, 2.3, 0);
@@ -273,8 +285,7 @@ export function buildCity(scene, rng) {
       fronds.rotation.set(-Math.PI / 2 + 0.5 + rng.range(-0.12, 0.12), 0, (k * Math.PI) / 3);
       g.add(fronds);
     }
-    const s = rng.range(0.85, 1.25);
-    g.scale.setScalar(s);
+    g.scale.setScalar(rng.range(0.85, 1.25));
     g.position.set(x, groundHeightAt(x, z), z);
     scene.add(g);
   };
@@ -284,7 +295,7 @@ export function buildCity(scene, rng) {
     if (rng.chance(0.25)) addPalm(cx - 15.5, cz - 15.5);
   }
 
-  // Streetlights along the avenues.
+  // --- Streetlights along the avenues -----------------------------------------
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x4a4f57, roughness: 0.7, metalness: 0.4 });
   const lampMat = new THREE.MeshBasicMaterial({ color: 0xffd98f });
   const poleGeo = new THREE.CylinderGeometry(0.07, 0.09, 5.4, 5);
@@ -303,7 +314,7 @@ export function buildCity(scene, rng) {
     }
   }
 
-  // Boardwalk, beach, pier and the sea.
+  // --- The shore: boardwalk, beach, pier and the sea ---------------------------
   const woodMat = new THREE.MeshStandardMaterial({ color: 0xa0784f, roughness: 1 });
   const boardwalk = new THREE.Mesh(new THREE.BoxGeometry(CITY.half * 2 + 40, 0.25, 7), woodMat);
   boardwalk.position.set(0, 0.12, CITY.beachZ);
@@ -323,7 +334,7 @@ export function buildCity(scene, rng) {
   pierDeck.position.set(POIS.pier.x, 0.5, CITY.waterZ + 22);
   scene.add(pierDeck);
 
-  // Sun disc and drifting clouds.
+  // --- Sky dressing: the sun disc and drifting clouds ---------------------------
   const sun = new THREE.Mesh(new THREE.CircleGeometry(26, 24), new THREE.MeshBasicMaterial({ color: 0xfff2c0, fog: false }));
   sun.position.set(-620, 150, 420);
   sun.lookAt(0, 40, 0);
@@ -343,7 +354,7 @@ export function buildCity(scene, rng) {
     clouds.push(cloud);
   }
 
-  // Parked-car spots: nose-in along avenue edges plus the Shoreline Motors lot.
+  // --- Parked-car spots: nose-in along avenue edges, plus the dealer lot --------
   const parkedSpots = [];
   for (const a of avenueLines()) {
     for (let t = -CITY.half + 30; t < CITY.half - 10; t += 26) {
@@ -360,6 +371,7 @@ export function buildCity(scene, rng) {
   return {
     colliders,
     parkedSpots,
+    /** Animate the waterline and drift the clouds. */
     update(dt, t) {
       water.position.y = -0.5 + Math.sin(t * 0.7) * 0.07;
       for (const cloud of clouds) {

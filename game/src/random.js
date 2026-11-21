@@ -1,6 +1,7 @@
-// A small seeded random generator (mulberry32) plus helpers. The city and the
-// screenshot scenes are built from a fixed seed, so every visit — and every
-// staged screenshot — sees the same Sunfall City.
+// A small seeded random generator (mulberry32) plus the numeric helpers the
+// rest of the game shares. City generation and the screenshot scenes draw from
+// a fixed seed, so every visit — and every staged screenshot — sees the same
+// Sunfall City.
 
 export function makeRng(seed) {
   let state = seed >>> 0;
@@ -15,28 +16,29 @@ export function makeRng(seed) {
     next,
     /** Float in [min, max). */
     range: (min, max) => min + next() * (max - min),
-    /** Integer in [min, max]. */
+    /** Integer in [min, max], both ends included. */
     int: (min, max) => Math.floor(min + next() * (max - min + 1)),
     /** True with probability p. */
     chance: (p) => next() < p,
-    /** A random element of the array. */
+    /** One element of the array, chosen uniformly. */
     pick: (arr) => arr[Math.floor(next() * arr.length)],
   };
 }
 
-/** Clamp a value into [min, max]. */
+/** Clamp v into the closed interval [min, max]. */
 export const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
-/** Linear interpolation. */
+/** Linear interpolation between a and b by t. */
 export const lerp = (a, b, t) => a + (b - a) * t;
 
-/** Shortest signed angle from a to b, in radians. */
+/** Shortest signed angle from a to b, in radians, in (-PI, PI]. */
 export function angleDelta(a, b) {
-  let d = (b - a) % (Math.PI * 2);
-  if (d > Math.PI) d -= Math.PI * 2;
-  if (d < -Math.PI) d += Math.PI * 2;
+  const full = Math.PI * 2;
+  let d = (b - a) % full;
+  if (d > Math.PI) d -= full;
+  if (d < -Math.PI) d += full;
   return d;
 }
 
-/** Distance between two {x, z} points on the ground plane. */
+/** Straight-line distance between two points on the ground plane. */
 export const dist2d = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);

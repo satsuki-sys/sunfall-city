@@ -1,16 +1,17 @@
 // The minimap: a north-up canvas plot of the avenue grid, the beach and the
-// sea, with blips for the player, their car, the police and whatever the
-// current objective points at. Redrawn each frame from live positions.
+// sea, with blips for the player, the player's car, the police and whatever
+// the current objective points at. It is redrawn every frame from live
+// positions, so nothing here keeps state between frames.
 
 import { CITY, avenueLines } from './config.js';
 
-const SIZE = 184;
+const SIZE = 184;             // canvas edge, in pixels
 const SPAN = 620;             // world metres shown across the map
 const SCALE = SIZE / SPAN;
-const ORIGIN = -270;          // world x/z at the map's top-left
+const ORIGIN = -270;          // world x/z sitting at the map's top-left corner
 
-const px = (x) => (x - ORIGIN) * SCALE;
-const pz = (z) => (z - ORIGIN) * SCALE;
+const mapX = (x) => (x - ORIGIN) * SCALE;
+const mapZ = (z) => (z - ORIGIN) * SCALE;
 
 export class Minimap {
   constructor(canvas) {
@@ -25,39 +26,44 @@ export class Minimap {
     g.beginPath();
     g.arc(SIZE / 2, SIZE / 2, SIZE / 2 - 1, 0, Math.PI * 2);
     g.clip();
-    // Land, beach, sea.
+
+    // Ground: land first, then the beach band, then the sea to the south.
     g.fillStyle = '#274b3a';
     g.fillRect(0, 0, SIZE, SIZE);
     g.fillStyle = '#e8d29a';
-    g.fillRect(0, pz(CITY.beachZ), SIZE, pz(CITY.waterZ) - pz(CITY.beachZ));
+    g.fillRect(0, mapZ(CITY.beachZ), SIZE, mapZ(CITY.waterZ) - mapZ(CITY.beachZ));
     g.fillStyle = '#2e8fa3';
-    g.fillRect(0, pz(CITY.waterZ), SIZE, SIZE - pz(CITY.waterZ));
-    // Roads.
+    g.fillRect(0, mapZ(CITY.waterZ), SIZE, SIZE - mapZ(CITY.waterZ));
+
+    // Roads: one stroke per avenue, on each axis.
     g.strokeStyle = '#565e68';
     g.lineWidth = Math.max(2, CITY.roadWide * SCALE);
     for (const a of this.avenues) {
-      g.beginPath(); g.moveTo(px(a), 0); g.lineTo(px(a), SIZE); g.stroke();
-      g.beginPath(); g.moveTo(0, pz(a)); g.lineTo(SIZE, pz(a)); g.stroke();
+      g.beginPath(); g.moveTo(mapX(a), 0); g.lineTo(mapX(a), SIZE); g.stroke();
+      g.beginPath(); g.moveTo(0, mapZ(a)); g.lineTo(SIZE, mapZ(a)); g.stroke();
     }
-    // Police blips flash blue/red.
-    const flash = Math.floor(performance.now() / 280) % 2 === 0;
+
+    // Police blips, flashing blue and red in turn.
+    const flashBlue = Math.floor(performance.now() / 280) % 2 === 0;
     for (const car of world.cars) {
       if (car.driver !== 'police' || car.health <= 0) continue;
-      g.fillStyle = flash ? '#3f8cff' : '#ff5040';
-      g.fillRect(px(car.x) - 2.5, pz(car.z) - 2.5, 5, 5);
+      g.fillStyle = flashBlue ? '#3f8cff' : '#ff5040';
+      g.fillRect(mapX(car.x) - 2.5, mapZ(car.z) - 2.5, 5, 5);
     }
-    // The player's car, when they are away from it.
+
+    // The player's own car, marked while they are away from it on foot.
     if (!world.playerVehicle && world.lastCar) {
       g.fillStyle = '#f7f3ea';
-      g.fillRect(px(world.lastCar.x) - 2, pz(world.lastCar.z) - 2, 4, 4);
+      g.fillRect(mapX(world.lastCar.x) - 2, mapZ(world.lastCar.z) - 2, 4, 4);
     }
-    // Objective blip.
+
+    // Objective marker: a small diamond in the target's colour.
     const target = world.missions?.target;
     if (target) {
       g.fillStyle = target.color ?? '#ffd23e';
+      const tx = mapX(target.x);
+      const tz = mapZ(target.z);
       g.beginPath();
-      const tx = px(target.x);
-      const tz = pz(target.z);
       g.moveTo(tx, tz - 5);
       g.lineTo(tx + 4, tz);
       g.lineTo(tx, tz + 5);
@@ -65,11 +71,12 @@ export class Minimap {
       g.closePath();
       g.fill();
     }
-    // Player arrow, pointing where the player (or their car) faces.
+
+    // Player arrow, rotated to face the way the player (or their car) faces.
     const p = world.playerPos;
     const heading = world.playerVehicle ? world.playerVehicle.heading : world.player.heading;
-    g.translate(px(p.x), pz(p.z));
-    g.rotate(Math.atan2(Math.sin(heading), Math.cos(heading)) * 0 + headingToMap(heading));
+    g.translate(mapX(p.x), mapZ(p.z));
+    g.rotate(headingToMap(heading));
     g.fillStyle = '#ffffff';
     g.beginPath();
     g.moveTo(0, -6);
@@ -82,9 +89,10 @@ export class Minimap {
   }
 }
 
-/** World heading (0 = +z/south, growing toward +x/east) to a canvas rotation. */
+/** World heading (0 = +z/south, growing toward +x/east) as a canvas rotation. */
 function headingToMap(heading) {
-  // Canvas y grows downward (south), x rightward (east): a heading of 0 points
-  // down, PI/2 points right — exactly a rotation of the up-arrow by heading.
+  // Canvas y grows downward (south) and x rightward (east), so a heading of 0
+  // points down the map and PI/2 points right: the up-arrow rotates by exactly
+  // the heading, unchanged.
   return heading;
 }

@@ -1,5 +1,5 @@
-// Cars: low-poly box-built vehicles (sedans, sports cars, taxis, trucks and
-// police interceptors) and the arcade physics every driver shares — player,
+// Cars: low-poly box-built vehicles — sedans, sports cars, taxis, trucks and
+// police interceptors — plus the arcade physics every driver shares. Player,
 // traffic and police all steer through stepCar, so a chase feels fair.
 
 import * as THREE from 'three';
@@ -7,9 +7,15 @@ import { CAR_TYPES } from './config.js';
 import { clamp } from './random.js';
 import { groundHeightAt } from './city.js';
 
-const bodyGeoCache = new Map();
+/** One shadow-casting box with a standard material; the only mesh maker here. */
 function box(w, h, d, color, opts = {}) {
-  const mat = new THREE.MeshStandardMaterial({ color, roughness: opts.rough ?? 0.55, metalness: opts.metal ?? 0.25, emissive: opts.emissive ?? 0x000000, emissiveIntensity: opts.ei ?? 1 });
+  const mat = new THREE.MeshStandardMaterial({
+    color,
+    roughness: opts.rough ?? 0.55,
+    metalness: opts.metal ?? 0.25,
+    emissive: opts.emissive ?? 0x000000,
+    emissiveIntensity: opts.ei ?? 1,
+  });
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.castShadow = true;
   return mesh;
@@ -20,9 +26,11 @@ export function makeCarMesh(type, color) {
   const spec = CAR_TYPES[type];
   const g = new THREE.Group();
   const paint = type === 'police' ? 0xf4f6f8 : type === 'taxi' ? 0xf2c14e : color;
+
   const body = box(spec.wid, type === 'truck' ? 0.8 : 0.55, spec.len, paint);
   body.position.y = type === 'truck' ? 0.85 : 0.62;
   g.add(body);
+
   if (type === 'truck') {
     const cab = box(spec.wid * 0.92, 0.7, 1.1, 0x39434f);
     cab.position.set(0, 1.55, spec.len * 0.28);
@@ -56,12 +64,16 @@ export function makeCarMesh(type, color) {
     g.add(bar);
     g.userData.flash = [red.material, blue.material];
   }
-  const hl = box(spec.wid * 0.7, 0.12, 0.05, 0xfff6c9, { emissive: 0xffeeb0, ei: 1.4 });
-  hl.position.set(0, 0.68, spec.len / 2 + 0.01);
-  g.add(hl);
-  const tl = box(spec.wid * 0.7, 0.1, 0.05, 0xd23b2e, { emissive: 0xd23b2e, ei: 0.8 });
-  tl.position.set(0, 0.7, -spec.len / 2 - 0.01);
-  g.add(tl);
+
+  // Headlights and tail lights.
+  const headlights = box(spec.wid * 0.7, 0.12, 0.05, 0xfff6c9, { emissive: 0xffeeb0, ei: 1.4 });
+  headlights.position.set(0, 0.68, spec.len / 2 + 0.01);
+  g.add(headlights);
+  const tailLights = box(spec.wid * 0.7, 0.1, 0.05, 0xd23b2e, { emissive: 0xd23b2e, ei: 0.8 });
+  tailLights.position.set(0, 0.7, -spec.len / 2 - 0.01);
+  g.add(tailLights);
+
+  // Wheels share one geometry and material; the front pair also steers.
   const wheelGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.24, 10);
   wheelGeo.rotateZ(Math.PI / 2);
   const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1c1f24, roughness: 0.9 });
@@ -90,7 +102,7 @@ export function createCar(scene, type, color, x, z, heading) {
     health: spec.health,
     maxHealth: spec.health,
     driver: null,        // 'player' | 'traffic' | 'police' | 'parked'
-    lastImpact: 0,       // speed lost to a wall this frame (world reads it)
+    lastImpact: 0,       // speed lost to a wall this step (the world reads it)
     honkCooldown: 0,
     dead: false,
   };
@@ -136,6 +148,8 @@ export function stepCar(car, control, dt, colliders, cars) {
   const spec = car.spec;
   car.lastImpact = 0;
   const before = Math.abs(car.speed);
+
+  // --- Speed: engine, brake, drag -------------------------------------------
   if (car.health <= 0) {
     car.speed *= Math.max(0, 1 - 2.5 * dt);
   } else if (control.brake && Math.abs(car.speed) > 0.5) {
@@ -150,6 +164,7 @@ export function stepCar(car, control, dt, colliders, cars) {
   if (Math.abs(car.speed) < 0.04 && control.throttle === 0) car.speed = 0;
   car.speed = clamp(car.speed, -11, spec.maxSpeed);
 
+  // --- Heading and position ---------------------------------------------------
   // control.steer > 0 turns left (heading grows toward the east of south).
   const steerAuthority = clamp(Math.abs(car.speed) / 7, 0, 1) * Math.sign(car.speed);
   car.heading += control.steer * 1.65 * steerAuthority * dt;
@@ -157,7 +172,7 @@ export function stepCar(car, control, dt, colliders, cars) {
   car.x += f.x * car.speed * dt;
   car.z += f.z * car.speed * dt;
 
-  // Building collisions at nose and tail.
+  // --- Buildings: collision circles at the nose and the tail ------------------
   const r = spec.wid * 0.58;
   for (const s of [0.32, -0.32]) {
     const cx = car.x + f.x * spec.len * s;
@@ -173,7 +188,8 @@ export function stepCar(car, control, dt, colliders, cars) {
       car.speed *= 0.35;
     }
   }
-  // Other cars: soft push apart.
+
+  // --- Other cars: a soft push apart, with damage for the faster one ----------
   for (const other of cars) {
     if (other === car) continue;
     const dx = car.x - other.x;
@@ -190,6 +206,8 @@ export function stepCar(car, control, dt, colliders, cars) {
       }
     }
   }
+
+  // --- Pose the mesh ------------------------------------------------------------
   car.x = clamp(car.x, -258, 258);
   car.z = clamp(car.z, -258, 262);
   car.mesh.position.set(car.x, groundHeightAt(car.x, car.z), car.z);

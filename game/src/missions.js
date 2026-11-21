@@ -1,6 +1,7 @@
 // Missions: a three-job story for Rook, a courier who owes the city a favour,
-// plus the repeatable Taxi Dash. Marisol at Café Solano hands out the work by
-// phone banner; gold beacons mark the way, and the minimap target follows.
+// plus the repeatable Taxi Dash on the side. Marisol at Café Solano hands out
+// the work by phone banner; a gold beacon marks the way, and the minimap
+// target follows it.
 //
 //   1. First Run         — pick up a package at the café, deliver it dockside.
 //   2. Borrowed Sunshine — steal the coral Vireo GT from Shoreline Motors and
@@ -13,7 +14,7 @@ import { POIS } from './city.js';
 import { dist2d } from './random.js';
 import { Guard } from './combat.js';
 
-const CASE_POS = { x: -88, z: 330 };
+const CASE_POS = { x: -88, z: 330 }; // the cash case, at the end of the pier
 
 export class Missions {
   constructor(world) {
@@ -24,6 +25,7 @@ export class Missions {
     this.taxi = { phase: 'none', ped: null, dest: null, timer: 0, offerIn: 14 };
     this.lastObjective = '';
 
+    // The objective beacon: a translucent gold column at the target.
     const beaconMat = new THREE.MeshBasicMaterial({
       color: 0xffd23e, transparent: true, opacity: 0.26, depthWrite: false, side: THREE.DoubleSide,
     });
@@ -32,7 +34,8 @@ export class Missions {
     this.beacon.visible = false;
     world.scene.add(this.beacon);
 
-    // The cash case waits at the end of the pier from the start.
+    // The cash case waits at the end of the pier from the very start, with
+    // its guard posted nearby (inactive until the story arms him).
     const caseMesh = new THREE.Mesh(
       new THREE.BoxGeometry(0.7, 0.3, 0.5),
       new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.35, metalness: 0.7, emissive: 0x664d00, emissiveIntensity: 0.4 }),
@@ -46,7 +49,7 @@ export class Missions {
     world.onPedArrived = (ped) => this.#pedArrived(ped);
   }
 
-  /** Restore story progress from a save. */
+  /** Restore story progress from a save: jump straight to that job's first stage. */
   restore(index) {
     this.storyIndex = Math.min(3, index);
     this.stage = ['toCafe', 'toLot', 'toPier', 'free'][this.storyIndex];
@@ -65,6 +68,7 @@ export class Missions {
     this.beacon.visible = false;
   }
 
+  /** Push an objective to the HUD, throttled so the text only changes when it should. */
   #objective(title, text, dist) {
     const key = `${title}|${text}|${dist === null ? '' : Math.round(dist / 5)}`;
     if (key === this.lastObjective) return;
@@ -77,24 +81,29 @@ export class Missions {
     return dist2d(p.x, p.z, x, z) < r;
   }
 
+  /** Distance from the player to a point, for objective readouts. */
+  #distTo(x, z) {
+    const p = this.world.playerPos;
+    return dist2d(p.x, p.z, x, z);
+  }
+
   update(dt, t) {
-    const world = this.world;
+    // The beacon breathes and slowly turns, playing or not.
     this.beacon.material.opacity = 0.2 + Math.sin(t * 3) * 0.07;
     this.beacon.rotation.y += dt * 0.4;
     if (world.state === 'playing') {
-      this.#updateStory(dt);
+      this.#updateStory();
       this.#updateTaxi(dt);
     }
   }
 
-  #updateStory(dt) {
-    void dt;
+  #updateStory() {
     const world = this.world;
     const hud = world.hud;
     switch (this.stage) {
       case 'toCafe': {
         this.#setTarget(POIS.cafe.x, POIS.cafe.z);
-        this.#objective('FIRST RUN', 'Meet Marisol at Café Solano', dist2d(world.playerPos.x, world.playerPos.z, POIS.cafe.x, POIS.cafe.z));
+        this.#objective('FIRST RUN', 'Meet Marisol at Café Solano', this.#distTo(POIS.cafe.x, POIS.cafe.z));
         if (this.#arrived(POIS.cafe.x, POIS.cafe.z, 7)) {
           hud.message('Marisol: "Rook. Take this to the Dockside Warehouse — no detours."', '#ffd98f');
           world.audio.pickup();
@@ -104,7 +113,7 @@ export class Missions {
       }
       case 'toWarehouse': {
         this.#setTarget(POIS.warehouse.x, POIS.warehouse.z);
-        this.#objective('FIRST RUN', 'Deliver the package to the Dockside Warehouse', dist2d(world.playerPos.x, world.playerPos.z, POIS.warehouse.x, POIS.warehouse.z));
+        this.#objective('FIRST RUN', 'Deliver the package to the Dockside Warehouse', this.#distTo(POIS.warehouse.x, POIS.warehouse.z));
         if (this.#arrived(POIS.warehouse.x, POIS.warehouse.z, 8)) {
           world.addCash(150);
           hud.toast('JOB DONE', 'First Run · +$150');
@@ -117,7 +126,7 @@ export class Missions {
       }
       case 'toLot': {
         this.#setTarget(POIS.carLot.x, POIS.carLot.z);
-        this.#objective('BORROWED SUNSHINE', 'Go to Shoreline Motors on the beachfront', dist2d(world.playerPos.x, world.playerPos.z, POIS.carLot.x, POIS.carLot.z));
+        this.#objective('BORROWED SUNSHINE', 'Go to Shoreline Motors on the beachfront', this.#distTo(POIS.carLot.x, POIS.carLot.z));
         if (this.#arrived(POIS.carLot.x, POIS.carLot.z, 16)) {
           hud.message('Tito: "The coral Vireo GT, back row. She\'s yours — just take her."', '#ffd98f');
           this.stage = 'steal';
@@ -127,7 +136,7 @@ export class Missions {
       case 'steal': {
         const car = world.markedCar;
         this.#setTarget(car.x, car.z);
-        this.#objective('BORROWED SUNSHINE', 'Steal the coral Vireo GT', dist2d(world.playerPos.x, world.playerPos.z, car.x, car.z));
+        this.#objective('BORROWED SUNSHINE', 'Steal the coral Vireo GT', this.#distTo(car.x, car.z));
         this.beacon.position.x = car.x;
         this.beacon.position.z = car.z;
         if (world.playerVehicle === car) {
@@ -140,7 +149,7 @@ export class Missions {
       case 'toGarage': {
         this.#setTarget(POIS.garage.x, POIS.garage.z);
         const inCar = world.playerVehicle === world.markedCar;
-        this.#objective('BORROWED SUNSHINE', inCar ? "Deliver the Vireo GT to Tito's Garage" : 'Get back in the Vireo GT', dist2d(world.playerPos.x, world.playerPos.z, POIS.garage.x, POIS.garage.z));
+        this.#objective('BORROWED SUNSHINE', inCar ? "Deliver the Vireo GT to Tito's Garage" : 'Get back in the Vireo GT', this.#distTo(POIS.garage.x, POIS.garage.z));
         if (inCar && this.#arrived(POIS.garage.x, POIS.garage.z, 10)) {
           world.player.exitCar(world);
           world.markedCar.driver = 'parked';
@@ -155,7 +164,7 @@ export class Missions {
       }
       case 'toPier': {
         this.#setTarget(POIS.pier.x, POIS.pier.z + 30);
-        this.#objective('THE SUNSET SCORE', 'Head to the end of Palms Pier', dist2d(world.playerPos.x, world.playerPos.z, POIS.pier.x, POIS.pier.z + 30));
+        this.#objective('THE SUNSET SCORE', 'Head to the end of Palms Pier', this.#distTo(POIS.pier.x, POIS.pier.z + 30));
         if (this.#arrived(CASE_POS.x, CASE_POS.z, 16)) {
           this.guard.active = true;
           hud.message('A guard watches the case. Take it — fast, or quiet and quicker.', '#ff9d8a');
@@ -165,7 +174,7 @@ export class Missions {
       }
       case 'grab': {
         this.#setTarget(CASE_POS.x, CASE_POS.z);
-        this.#objective('THE SUNSET SCORE', 'Grab the cash case', dist2d(world.playerPos.x, world.playerPos.z, CASE_POS.x, CASE_POS.z));
+        this.#objective('THE SUNSET SCORE', 'Grab the cash case', this.#distTo(CASE_POS.x, CASE_POS.z));
         if (this.#arrived(CASE_POS.x, CASE_POS.z, 2.6)) {
           this.caseMesh.visible = false;
           world.reportCrime('score', world.playerPos, true);
@@ -189,18 +198,24 @@ export class Missions {
         break;
       }
       default: {
-        if (this.taxi.phase === 'none') this.#clearTarget(), hud.clearObjective();
+        // Story finished: with no taxi running either, there is no objective.
+        if (this.taxi.phase === 'none') {
+          this.#clearTarget();
+          hud.clearObjective();
+        }
       }
     }
   }
 
-  // --- Taxi Dash: the repeatable side job ---------------------------------
+  // --- Taxi Dash: the repeatable side job -------------------------------------
 
   #updateTaxi(dt) {
     const world = this.world;
     const taxi = this.taxi;
-    if (this.storyIndex < 1) return;
+    if (this.storyIndex < 1) return; // no fares until the first job is done
+
     if (taxi.phase === 'none') {
+      // Count down to the next hail; then find a walker to raise a hand.
       taxi.offerIn -= dt;
       if (taxi.offerIn <= 0) {
         const ped = world.peds.find((p) => p.state === 'walk' && dist2d(p.x, p.z, world.playerPos.x, world.playerPos.z) > 25);
@@ -213,14 +228,16 @@ export class Missions {
       }
       return;
     }
+
     if (taxi.phase === 'offer') {
-      // The story keeps the marker while a job is running; the hail waits.
+      // While a story job is running it keeps the marker; the hail just waits.
       if (this.stage === 'free') {
         this.#setTarget(taxi.ped.x, taxi.ped.z, '#7be382');
-        this.#objective('TAXI DASH', 'Pick up the passenger', dist2d(world.playerPos.x, world.playerPos.z, taxi.ped.x, taxi.ped.z));
+        this.#objective('TAXI DASH', 'Pick up the passenger', this.#distTo(taxi.ped.x, taxi.ped.z));
       }
       const car = world.playerVehicle;
-      if (car && Math.abs(car.speed) < 1.2 && dist2d(car.x, car.z, taxi.ped.x, taxi.ped.z) < 4.5) {
+      const stoppedBeside = car && Math.abs(car.speed) < 1.2 && dist2d(car.x, car.z, taxi.ped.x, taxi.ped.z) < 4.5;
+      if (stoppedBeside) {
         taxi.ped.state = 'toCar';
         taxi.ped.target = { x: car.x, z: car.z };
         taxi.phase = 'pickup';
@@ -228,21 +245,25 @@ export class Missions {
       if (dist2d(taxi.ped.x, taxi.ped.z, world.playerPos.x, world.playerPos.z) > 130) this.#dropTaxi();
       return;
     }
+
     if (taxi.phase === 'pickup') {
       const car = world.playerVehicle;
       if (!car) { this.#dropTaxi(); return; }
       taxi.ped.target = { x: car.x, z: car.z };
       return;
     }
+
     if (taxi.phase === 'ride') {
       taxi.timer += dt;
       if (this.stage === 'free') {
         this.#setTarget(taxi.dest.x, taxi.dest.z, '#7be382');
-        this.#objective('TAXI DASH', 'Drive your passenger to the green marker', dist2d(world.playerPos.x, world.playerPos.z, taxi.dest.x, taxi.dest.z));
+        this.#objective('TAXI DASH', 'Drive your passenger to the green marker', this.#distTo(taxi.dest.x, taxi.dest.z));
       }
       const car = world.playerVehicle;
       if (!car) { this.#dropTaxi(true); return; }
-      if (dist2d(car.x, car.z, taxi.dest.x, taxi.dest.z) < 6.5 && Math.abs(car.speed) < 1.2) {
+      const arrivedStopped = dist2d(car.x, car.z, taxi.dest.x, taxi.dest.z) < 6.5 && Math.abs(car.speed) < 1.2;
+      if (arrivedStopped) {
+        // The fare: a base, plus distance, plus a tip for a quick ride.
         const fare = Math.round(30 + taxi.distance * 0.4 + Math.max(0, 40 - taxi.timer * 0.4));
         world.addCash(fare);
         world.hud.toast('FARE PAID', `Taxi Dash · +$${fare}`);
@@ -259,6 +280,7 @@ export class Missions {
     }
   }
 
+  /** A passenger reached the car: choose their destination and start the ride. */
   #pedArrived(ped) {
     const taxi = this.taxi;
     if (taxi.phase !== 'pickup' || taxi.ped !== ped) return;
@@ -271,6 +293,7 @@ export class Missions {
     this.world.hud.message(`Passenger: "Take me to ${poi.name} — step on it."`, '#9fe8a9');
   }
 
+  /** Abandon the current hail or fare, and schedule the next one. */
   #dropTaxi(stranded = false) {
     const taxi = this.taxi;
     if (taxi.ped) {

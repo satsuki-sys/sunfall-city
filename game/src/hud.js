@@ -1,26 +1,28 @@
-// The HUD is plain DOM over the canvas: health and cash top-left, wanted stars
-// top-right, the mission objective under the top centre, a banner for story
-// messages, an interaction prompt, a speedometer, and a damage vignette.
+// The HUD is plain DOM layered over the canvas: health and cash at the top
+// left, wanted stars at the top right, the mission objective under the top
+// centre, a banner for story messages, an interaction prompt, a speedometer
+// and a damage vignette. Setters cache their last value so unchanged readouts
+// never touch the DOM twice.
 
 export class Hud {
   constructor() {
-    const $ = (id) => document.getElementById(id);
-    this.root = $('hud');
-    this.healthBar = $('health-bar');
-    this.cashEl = $('cash');
-    this.starsEl = $('stars');
-    this.objectiveEl = $('objective');
-    this.objectiveTitle = $('objective-title');
-    this.objectiveText = $('objective-text');
-    this.objectiveDist = $('objective-dist');
-    this.bannerEl = $('banner');
-    this.promptEl = $('prompt');
-    this.speedEl = $('speed');
-    this.crosshairEl = $('crosshair');
-    this.vignetteEl = $('vignette');
-    this.toastEl = $('toast');
-    this.toastTitle = $('toast-title');
-    this.toastSub = $('toast-sub');
+    const byId = (id) => document.getElementById(id);
+    this.root = byId('hud');
+    this.healthBar = byId('health-bar');
+    this.cashEl = byId('cash');
+    this.starsEl = byId('stars');
+    this.objectiveEl = byId('objective');
+    this.objectiveTitle = byId('objective-title');
+    this.objectiveText = byId('objective-text');
+    this.objectiveDist = byId('objective-dist');
+    this.bannerEl = byId('banner');
+    this.promptEl = byId('prompt');
+    this.speedEl = byId('speed');
+    this.crosshairEl = byId('crosshair');
+    this.vignetteEl = byId('vignette');
+    this.toastEl = byId('toast');
+    this.toastTitle = byId('toast-title');
+    this.toastSub = byId('toast-sub');
     this.bannerQueue = [];
     this.bannerTimer = 0;
     this.toastTimer = 0;
@@ -33,7 +35,8 @@ export class Hud {
   hide() { this.root.style.display = 'none'; }
 
   setHealth(frac) {
-    this.healthBar.style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`;
+    const clamped = Math.max(0, Math.min(1, frac));
+    this.healthBar.style.width = `${clamped * 100}%`;
     this.healthBar.style.background = frac < 0.3 ? '#e5534b' : frac < 0.6 ? '#f2c14e' : '#7bc96f';
   }
 
@@ -54,11 +57,13 @@ export class Hud {
     this.objectiveEl.style.display = 'block';
     this.objectiveTitle.textContent = title;
     this.objectiveText.textContent = text;
-    this.objectiveDist.textContent = dist === null || dist === undefined ? '' : `${Math.round(dist)} m`;
+    const hasDist = dist !== null && dist !== undefined;
+    this.objectiveDist.textContent = hasDist ? `${Math.round(dist)} m` : '';
   }
 
   clearObjective() { this.objectiveEl.style.display = 'none'; }
 
+  /** Queue a story banner; queued banners play one after another in update(). */
   message(text, color = '#ffe9c9') {
     this.bannerQueue.push({ text, color });
   }
@@ -87,6 +92,7 @@ export class Hud {
 
   damageFlash() { this.vignette = 0.75; }
 
+  /** Advance the banner queue, the toast fade and the damage vignette. */
   update(dt) {
     if (this.bannerTimer > 0) {
       this.bannerTimer -= dt;

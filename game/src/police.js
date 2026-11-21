@@ -1,7 +1,7 @@
 // The Sunfall PD: interceptors that answer the wanted level. They spawn on
-// avenues a block or two away, hunt the player's position, ram a fleeing car
-// and box in a runner on foot. Their light bars flash red/blue in turns and
-// the nearest one's siren feeds the audio bank.
+// avenues a block or two from the player, hunt the player's position, ram a
+// fleeing car and box in a runner on foot. Their light bars alternate red and
+// blue, and the nearest unit's siren feeds the audio bank.
 
 import { WANTED } from './config.js';
 import { angleDelta, clamp, dist2d } from './random.js';
@@ -12,7 +12,7 @@ export class PoliceForce {
   constructor(scene, world) {
     this.scene = scene;
     this.world = world;
-    this.units = [];       // cars with driver 'police'
+    this.units = [];       // cars whose driver is 'police'
     this.spawnCooldown = 0;
   }
 
@@ -35,16 +35,23 @@ export class PoliceForce {
     const desired = WANTED.policeByStars[wanted] ?? 0;
     this.spawnCooldown -= dt;
 
+    // Top the force up to strength while the wanted level calls for it.
     if (this.activeCount() < desired && this.spawnCooldown <= 0) this.#spawn();
-    // Retire units when the heat dies and they are far away.
+
+    // Retire units the heat no longer needs: out of sight once the stars are
+    // gone, or long-wrecked hulks.
     for (const u of [...this.units]) {
-      if ((wanted === 0 && dist2d(u.x, u.z, world.playerPos.x, world.playerPos.z) > 95) || (u.health <= 0 && u.retire > 25)) {
+      const farAndCalm = wanted === 0 && dist2d(u.x, u.z, world.playerPos.x, world.playerPos.z) > 95;
+      const wreckedLongAgo = u.health <= 0 && u.retire > 25;
+      if (farAndCalm || wreckedLongAgo) {
         this.scene.remove(u.mesh);
         world.cars.splice(world.cars.indexOf(u), 1);
         this.units.splice(this.units.indexOf(u), 1);
       }
     }
 
+    // Drive every unit, strobe its light bar, and feed the siren mix from the
+    // nearest unit's distance.
     let nearest = Infinity;
     for (const u of this.units) {
       this.#drive(u, dt);
@@ -57,7 +64,8 @@ export class PoliceForce {
       if (u.health <= 0) u.retire = (u.retire ?? 0) + dt;
       nearest = Math.min(nearest, dist2d(u.x, u.z, world.playerPos.x, world.playerPos.z));
     }
-    world.audio.siren(nearest === Infinity ? 0 : clamp(1 - nearest / 55, 0, 1) * (wanted > 0 ? 1 : 0.3));
+    const sirenLevel = nearest === Infinity ? 0 : clamp(1 - nearest / 55, 0, 1) * (wanted > 0 ? 1 : 0.3);
+    world.audio.siren(sirenLevel);
   }
 
   #spawn() {
@@ -67,7 +75,7 @@ export class PoliceForce {
     const dist = world.rng.range(52, 72);
     const x = clamp(p.x + Math.sin(angle) * dist, -230, 230);
     const z = clamp(p.z + Math.cos(angle) * dist, -230, 230);
-    // Snap to the nearest avenue crossing so they arrive by road.
+    // Snap the spawn onto the nearest avenue so the unit arrives by road.
     const sx = nearestAvenue(x);
     const car = createCar(this.scene, 'police', 0xffffff, sx, z, Math.atan2(p.x - sx, p.z - z));
     car.driver = 'police';
@@ -83,6 +91,7 @@ export class PoliceForce {
       stepCar(u, { throttle: 0, steer: 0, brake: true }, dt, world.colliders, world.cars);
       return;
     }
+    // Aim at where the target will be shortly, not where it is.
     const target = world.playerVehicle ?? world.playerPos;
     const lead = world.playerVehicle ? 0.35 : 0;
     const tx = target.x + Math.sin(target.heading ?? 0) * (target.speed ?? 0) * lead;
@@ -91,7 +100,8 @@ export class PoliceForce {
     const want = Math.atan2(tx - u.x, tz - u.z);
     const delta = angleDelta(u.heading, want);
     let steer = clamp(delta * 2.4, -1, 1);
-    // Building ahead? Swerve around it.
+
+    // Building dead ahead? Swerve around it.
     const aheadX = u.x + Math.sin(u.heading) * 7;
     const aheadZ = u.z + Math.cos(u.heading) * 7;
     for (const c of world.colliders) {
@@ -100,12 +110,15 @@ export class PoliceForce {
         break;
       }
     }
+
     let throttle = 1;
-    if (Math.abs(delta) > 2.2 && u.speed < 4) throttle = -1; // swing the nose around
+    if (Math.abs(delta) > 2.2 && u.speed < 4) throttle = -1; // reverse to swing the nose around
     else if (Math.abs(delta) > 1.2) throttle = 0.45;
     if (!world.playerVehicle && d < 5) throttle = 0;         // on foot: pull up alongside
     if (!world.playerVehicle && d < 2.6) throttle = -0.4;
     stepCar(u, { throttle, steer, brake: false }, dt, world.colliders, world.cars);
+
+    // A solid ram on the player's car hurts.
     if (u.lastImpact > 8 && world.playerVehicle === target && target.driver === 'player') {
       world.damagePlayer(4, u);
     }

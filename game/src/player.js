@@ -1,8 +1,8 @@
 // The player: a courier in a teal shirt. On foot they walk and sprint with a
-// swing of arms, turn with the camera, and collide with walls and cars; F gets
-// into the nearest car (hot-wiring a stranger's ride is a crime when someone
-// sees it) and F again gets out. The camera is a soft orbit rig that follows
-// behind, rises over roofs rather than clipping into them, and aims the gun.
+// swing of the arms, turn with the camera, and collide with walls and cars;
+// F gets into the nearest car (hot-wiring a stranger's ride is a crime when
+// someone sees it) and F again gets out. The camera is a soft orbit rig that
+// follows behind, pulls in rather than clipping into roofs, and aims the gun.
 
 import * as THREE from 'three';
 import { CITY, PLAYER } from './config.js';
@@ -35,10 +35,11 @@ export class Player {
   exitCar(world) {
     const car = this.car;
     if (!car) return;
-    // Step out on the left side of the car.
-    const side = { x: Math.cos(car.heading), z: -Math.sin(car.heading) };
-    this.x = car.x + side.x * 1.8;
-    this.z = car.z + side.z * 1.8;
+    // Step out on the car's left side, pushed clear of any wall there.
+    const sideX = Math.cos(car.heading);
+    const sideZ = -Math.sin(car.heading);
+    this.x = car.x + sideX * 1.8;
+    this.z = car.z + sideZ * 1.8;
     [this.x, this.z] = resolveCircle(this.x, this.z, PLAYER.radius, world.colliders);
     this.heading = car.heading;
     car.driver = 'parked';
@@ -51,20 +52,30 @@ export class Player {
   update(dt, world) {
     const input = world.input;
     if (this.car) {
-      const throttle = input.axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp']);
-      const steer = input.axis(['KeyD', 'ArrowRight'], ['KeyA', 'ArrowLeft']);
-      stepCar(this.car, { throttle, steer, brake: input.down('Space') }, dt, world.colliders, world.cars);
-      this.x = this.car.x;
-      this.z = this.car.z;
-      this.heading = this.car.heading;
-      this.speedNow = Math.abs(this.car.speed);
-      world.audio.engine(clamp(Math.abs(this.car.speed) / this.car.spec.maxSpeed, 0, 1));
-      if (input.justPressed('KeyH')) world.audio.horn();
-      if (this.car.lastImpact > 9 && Math.abs(this.car.speed) < 4) world.shake(0.25);
+      this.#drive(dt, world, input);
       return;
     }
+    this.#walk(dt, world, input);
+  }
+
+  /** Driving: the shared stepCar physics, fed by the driving keys. */
+  #drive(dt, world, input) {
+    const car = this.car;
+    const throttle = input.axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp']);
+    const steer = input.axis(['KeyD', 'ArrowRight'], ['KeyA', 'ArrowLeft']);
+    stepCar(car, { throttle, steer, brake: input.down('Space') }, dt, world.colliders, world.cars);
+    this.x = car.x;
+    this.z = car.z;
+    this.heading = car.heading;
+    this.speedNow = Math.abs(car.speed);
+    world.audio.engine(clamp(Math.abs(car.speed) / car.spec.maxSpeed, 0, 1));
+    if (input.justPressed('KeyH')) world.audio.horn();
+    if (car.lastImpact > 9 && Math.abs(car.speed) < 4) world.shake(0.25);
+  }
+
+  /** On foot: move relative to the camera's ground-projected facing. */
+  #walk(dt, world, input) {
     world.audio.engine(null);
-    // On foot: move relative to the camera's ground-projected facing.
     const camYaw = world.cameraRig.yaw;
     const fwd = input.axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp']);
     const strafe = input.axis(['KeyA', 'ArrowLeft'], ['KeyD', 'ArrowRight']);
@@ -86,11 +97,13 @@ export class Player {
     if (moving) {
       this.x += mx * speed * dt;
       this.z += mz * speed * dt;
+      // Face the way we move — or the camera's way, while the mouse aims.
       const want = input.mouseDown ? camYaw : Math.atan2(mx, mz);
       this.heading += clamp(angleDelta(this.heading, want), -10 * dt, 10 * dt);
       this.phase += dt * (sprint ? 11 : 8);
     }
     [this.x, this.z] = resolveCircle(this.x, this.z, PLAYER.radius, world.colliders);
+    // Cars are solid too: slide out of any we overlap.
     for (const car of world.cars) {
       const d = dist2d(this.x, this.z, car.x, car.z);
       const min = car.spec.len * 0.42;
@@ -99,17 +112,18 @@ export class Player {
         this.z += ((this.z - car.z) / d) * (min - d);
       }
     }
+    // The pier is walkable deck over the water; everywhere else the sand ends play.
     const onPier = Math.abs(this.x - (-88)) < 6 && this.z > CITY.waterZ - 6;
     this.x = clamp(this.x, -256, 256);
     this.z = clamp(this.z, -256, onPier ? 336 : 300);
-    const gy = groundHeightAt(this.x, this.z);
     const parts = this.mesh.userData.parts;
     const swing = moving ? Math.sin(this.phase) * 0.55 : 0;
     parts.legL.rotation.x = swing;
     parts.legR.rotation.x = -swing;
     parts.armL.rotation.x = -swing * 0.8;
-    parts.armR.rotation.x = input.mouseDown ? -1.35 : swing * 0.8; // arm up, aiming
-    this.mesh.position.set(this.x, gy + (moving ? Math.abs(Math.sin(this.phase)) * 0.04 : 0), this.z);
+    parts.armR.rotation.x = input.mouseDown ? -1.35 : swing * 0.8; // raised, aiming, while firing
+    const bob = moving ? Math.abs(Math.sin(this.phase)) * 0.04 : 0;
+    this.mesh.position.set(this.x, groundHeightAt(this.x, this.z) + bob, this.z);
     this.mesh.rotation.y = this.heading;
   }
 }
@@ -145,6 +159,7 @@ export class CameraRig {
       Math.sin(this.pitch),
       -Math.cos(this.yaw) * Math.cos(this.pitch),
     );
+    // If the full orbit distance lands inside a building, pull the camera in.
     let used = wantDist;
     for (const scale of [1, 0.62, 0.35]) {
       used = wantDist * scale;

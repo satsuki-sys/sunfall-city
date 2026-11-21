@@ -1,4 +1,4 @@
-// Screenshot staging behind ?shot=cover|drive|chase|mission. Each scene is
+// Screenshot staging, behind ?shot=cover|drive|chase|mission. Each scene is
 // posed from the same seeded world, then the real simulation is stepped for a
 // couple of seconds at a small render size (so headless staging stays fast)
 // before the frame is restored to full size, rendered once and flagged ready.
@@ -7,6 +7,7 @@
 import { POIS } from './city.js';
 import { createCar } from './vehicles.js';
 
+/** Step the simulation without rendering; `pin` re-asserts staged state per step. */
 function step(game, seconds, pin = null) {
   const steps = Math.round(seconds * 30);
   game.deferRender = true;
@@ -84,7 +85,8 @@ export function stageShot(game, name) {
       game.cars.push(unit);
       game.police.units.push(unit);
     }
-    // Look back down the avenue: the player's car in front, the law behind it.
+    // The camera looks back down the avenue: the player's car in front, the
+    // law behind it.
     rig.yaw = Math.PI / 2 - 0.3;
     rig.pitch = 0.3;
     rig.dist = 11;
@@ -125,6 +127,7 @@ export function stageShot(game, name) {
     step(game, 2.4);
   }
 
+  // Back to full size, settle the camera, and flag the finished frame.
   restore(game);
   game.snapCamera = true;
   game.update(1 / 30);

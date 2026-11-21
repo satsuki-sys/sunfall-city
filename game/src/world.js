@@ -20,6 +20,7 @@ import { SoundBank } from './audio.js';
 import { Input } from './input.js';
 import { loadSave, writeSave } from './save.js';
 
+/** Stars each crime is worth when it is witnessed. */
 const CRIME_STARS = { shot: 1, theft: 1, hitCar: 1, grandTheft: 2, hitPed: 2, score: 2, hitPolice: 3 };
 
 export class Game {
@@ -31,6 +32,7 @@ export class Game {
     this.time = 0;
     this.snapCamera = true;
 
+    // --- Renderer, scene, camera ----------------------------------------------
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(this.shotMode ? 1 : Math.min(devicePixelRatio, 1.75));
     this.renderer.setSize(innerWidth, innerHeight);
@@ -44,6 +46,7 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 1600);
     this.camera.position.set(-140, 8, -130);
 
+    // --- Light: a warm hemisphere wash and the low golden-hour sun --------------
     const hemi = new THREE.HemisphereLight(0xffd9a8, 0x7a5c48, 0.95);
     this.scene.add(hemi);
     this.sun = new THREE.DirectionalLight(0xffdf9e, 1.75);
@@ -57,6 +60,7 @@ export class Game {
     this.sun.shadow.bias = -0.0006;
     this.scene.add(this.sun, this.sun.target);
 
+    // --- The city and the player's instruments ----------------------------------
     const city = buildCity(this.scene, makeRng(4242));
     this.city = city;
     this.colliders = city.colliders;
@@ -67,6 +71,7 @@ export class Game {
     this.minimap = new Minimap(document.getElementById('minimap'));
     this.cameraRig = new CameraRig(this.camera);
 
+    // --- Actors and game state ----------------------------------------------------
     this.player = new Player(this.scene, this.rng);
     this.cars = [];
     this.peds = [];
@@ -100,28 +105,35 @@ export class Game {
     });
   }
 
+  /** Fill the city: parked cars (one of them the Vireo GT), traffic, crowds. */
   #populate(city) {
     const rng = this.rng;
-    // Parked cars along the kerbs and in the lot; one of them is the Vireo GT.
     const lotSpots = city.parkedSpots.filter((s) => s.lot);
     const kerbSpots = city.parkedSpots.filter((s) => !s.lot);
+
+    // The marked car for Borrowed Sunshine: a coral sport, on the lot.
     this.markedCar = createCar(this.scene, 'sport', 0xff5040, POIS.carLot.x + 12, POIS.carLot.z + 16, Math.PI);
     this.markedCar.driver = 'parked';
     this.cars.push(this.markedCar);
+
+    const lotColors = [0xf2e3c6, 0x63b3a6, 0xf2c14e, 0x7fb2d9, 0xd96c85];
     for (const spot of lotSpots) {
       if (Math.abs(spot.x - this.markedCar.x) < 3 && Math.abs(spot.z - this.markedCar.z) < 3) continue;
       if (!rng.chance(0.75)) continue;
-      const car = createCar(this.scene, rng.pick(['sedan', 'sedan', 'sport', 'truck']), rng.pick([0xf2e3c6, 0x63b3a6, 0xf2c14e, 0x7fb2d9, 0xd96c85]), spot.x, spot.z, spot.heading);
+      const car = createCar(this.scene, rng.pick(['sedan', 'sedan', 'sport', 'truck']), rng.pick(lotColors), spot.x, spot.z, spot.heading);
       car.driver = 'parked';
       this.cars.push(car);
     }
+    const kerbColors = [0xf2e3c6, 0xe8836b, 0x63b3a6, 0xf2c14e, 0x7fb2d9, 0x9bc53d];
     for (const spot of kerbSpots) {
       if (!rng.chance(0.5)) continue;
-      const car = createCar(this.scene, rng.pick(['sedan', 'sedan', 'taxi', 'sport', 'truck']), rng.pick([0xf2e3c6, 0xe8836b, 0x63b3a6, 0xf2c14e, 0x7fb2d9, 0x9bc53d]), spot.x, spot.z, spot.heading);
+      const car = createCar(this.scene, rng.pick(['sedan', 'sedan', 'taxi', 'sport', 'truck']), rng.pick(kerbColors), spot.x, spot.z, spot.heading);
       car.driver = 'parked';
       this.cars.push(car);
     }
-    // Moving traffic.
+
+    // Moving traffic, spawned well away from the player's start.
+    const trafficColors = [0xf2e3c6, 0xe8836b, 0x63b3a6, 0x7fb2d9, 0xf7f3ea];
     for (let i = 0; i < 13; i += 1) {
       let x = 0;
       let z = 0;
@@ -129,10 +141,12 @@ export class Game {
         x = rng.range(-220, 220);
         z = rng.range(-220, 220);
       } while (dist2d(x, z, this.player.x, this.player.z) < 55);
-      const car = createCar(this.scene, rng.pick(['sedan', 'sedan', 'taxi', 'truck']), rng.pick([0xf2e3c6, 0xe8836b, 0x63b3a6, 0x7fb2d9, 0xf7f3ea]), x, z, 0);
+      const car = createCar(this.scene, rng.pick(['sedan', 'sedan', 'taxi', 'truck']), rng.pick(trafficColors), x, z, 0);
       car.traffic = new TrafficDriver(car, rng);
       this.cars.push(car);
     }
+
+    // The crowd.
     for (let i = 0; i < 36; i += 1) this.peds.push(new Pedestrian(this.scene, rng));
   }
 
@@ -141,6 +155,7 @@ export class Game {
 
   shake(t) { this.cameraRig.shake(t); }
 
+  /** A traffic honk is audible only when it happens near the player. */
   onHonk(car) {
     if (dist2d(car.x, car.z, this.playerPos.x, this.playerPos.z) < 32) this.audio.horn();
   }
@@ -178,9 +193,10 @@ export class Game {
   /** A crime raises the wanted level only if someone could have seen it. */
   reportCrime(kind, pos, guaranteed = false) {
     if (this.state !== 'playing') return;
-    const witnessed = guaranteed
-      || this.police.nearestDistance(pos) < 48
-      || this.peds.some((p) => p.state !== 'down' && p.state !== 'riding' && dist2d(p.x, p.z, pos.x, pos.z) < 30);
+    const seenByPolice = this.police.nearestDistance(pos) < 48;
+    const seenByCrowd = this.peds.some((p) => p.state !== 'down' && p.state !== 'riding' && dist2d(p.x, p.z, pos.x, pos.z) < 30);
+    const witnessed = guaranteed || seenByPolice || seenByCrowd;
+    // Witnessed or not, people nearby still run from the noise.
     for (const ped of this.peds) ped.scare(pos.x, pos.z, kind === 'shot' || kind === 'hitPed' ? 30 : 16);
     if (!witnessed) return;
     this.wanted = Math.min(WANTED.max, this.wanted + (CRIME_STARS[kind] ?? 1));
@@ -188,7 +204,7 @@ export class Game {
   }
 
   damagePlayer(amount, source) {
-    void source;
+    void source; // the caller is not needed yet; the signature keeps call sites honest
     if (this.state !== 'playing' || this.shotMode) return;
     this.health -= amount;
     this.lastDamageAt = this.time;
@@ -201,7 +217,7 @@ export class Game {
     }
   }
 
-  /** Respawn after a downed/busted screen: hospital or the station steps. */
+  /** Respawn after a downed/busted screen: outside the hospital, or the station. */
   respawn(kind) {
     this.wanted = 0;
     this.bustMeter = 0;
@@ -222,6 +238,7 @@ export class Game {
     this.saveGame();
   }
 
+  /** A tracer: a bright line between two points, gone in a blink. */
   spawnTracer(a, b, color) {
     const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
     const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
@@ -230,6 +247,7 @@ export class Game {
     this.effects.push({ obj: line, life: 0.07, max: 0.07, kind: 'tracer' });
   }
 
+  /** A puff: a few soft spheres that drift, grow and fade. */
   spawnPuff(pos, color, count = 3, power = 1) {
     for (let i = 0; i < count; i += 1) {
       const mesh = new THREE.Mesh(PuffGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, depthWrite: false }));
@@ -277,7 +295,8 @@ export class Game {
   }
 
   #updateCrimesAndConsequences(dt) {
-    // Wanted decay: only while no fresh crime and no officer is close.
+    // Wanted decay: the clock runs only while no fresh crime lands and no
+    // officer is close enough to keep the heat on.
     if (this.wanted > 0) {
       if (this.police.nearestDistance(this.playerPos) < 26) this.crimeTimer = Math.max(this.crimeTimer, 2);
       this.crimeTimer -= dt;
@@ -287,9 +306,11 @@ export class Game {
         if (this.wanted === 0) this.hud.message('You lost the heat.', '#9fe8a9');
       }
     }
+
     this.impactCooldown = Math.max(0, this.impactCooldown - dt);
     const car = this.playerVehicle;
     if (car) {
+      // A hard wall impact in a car is itself a crime.
       if (car.lastImpact > 10 && this.impactCooldown <= 0) {
         this.reportCrime('hitCar', this.playerPos);
         this.impactCooldown = 2;
@@ -309,7 +330,8 @@ export class Game {
         }
       }
     }
-    // Bust: an officer on foot beside a slow, wanted player.
+
+    // Bust: an officer on foot beside a slow, wanted player fills the meter.
     if (!car && this.wanted > 0 && this.player.speedNow < 1) {
       const near = this.police.nearestDistance(this.playerPos);
       if (near < 4.6) {
@@ -320,12 +342,14 @@ export class Game {
         }
       } else this.bustMeter = Math.max(0, this.bustMeter - dt * 2);
     } else this.bustMeter = Math.max(0, this.bustMeter - dt * 2);
+
     // Health returns once the shooting stops.
     if (this.time - this.lastDamageAt > 6 && this.health > 0) {
       this.health = Math.min(100, this.health + 4.5 * dt);
     }
   }
 
+  /** The F-key prompt: get out of the current car, or into the nearest one. */
   #updateInteraction() {
     const input = this.input;
     if (this.player.car) {
@@ -360,6 +384,7 @@ export class Game {
     if (playing) {
       this.player.update(dt, this);
       this.#updateInteraction();
+      // Shooting: on foot, mouse held, and never while a screenshot is staged.
       if (this.input.mouseDown && !this.player.car && !this.shotMode) {
         const origin = new THREE.Vector3(this.player.x, this.player.mesh.position.y + 1.45, this.player.z);
         this.combat.playerShoot(origin, this.cameraRig.forward);
@@ -376,11 +401,13 @@ export class Game {
     }
     this.city.update(dt, this.time);
     this.#updateEffects(dt);
-    // The sun (and its shadow box) follows the player.
+
+    // The sun (and its shadow box) follows the player around the city.
     const p = this.playerPos;
     this.sun.position.set(p.x - 120, 130, p.z + 70);
     this.sun.target.position.set(p.x, 0, p.z);
     this.cameraRig.update(dt, this);
+
     if (this.deferRender) return; // screenshot staging steps the sim without drawing
     if (playing || this.shotMode) {
       this.hud.setHealth(this.health / 100);

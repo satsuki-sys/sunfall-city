@@ -1,7 +1,7 @@
 // Pedestrians: low-poly people who stroll the sidewalk loops block by block,
 // cross the street at corners, wave for taxis, and run when the city turns
-// dangerous near them. A person is a handful of boxes; the walk is a swinging
-// of legs and arms plus a little bob.
+// dangerous near them. A person is a handful of boxes; the walk is a swing of
+// the legs and arms plus a little bob.
 
 import * as THREE from 'three';
 import { blockCentres } from './config.js';
@@ -12,30 +12,37 @@ const SKIN = [0xf2c9a0, 0xd99e6a, 0xa06844, 0x7a4a2c, 0xffe0bd];
 const SHIRTS = [0xe8836b, 0x63b3a6, 0xf2c14e, 0xf7f3ea, 0xd96c85, 0x7fb2d9, 0x9bc53d, 0xff8c42];
 const PANTS = [0x39434f, 0x5b4a3f, 0x2f4858, 0x746a5a, 0x864343];
 
+/** Build one person. `fixed` pins any of skin/shirt/pants instead of rolling for them. */
 export function makePerson(rng, fixed = null) {
   const g = new THREE.Group();
   const skin = fixed?.skin ?? rng.pick(SKIN);
   const shirt = fixed?.shirt ?? rng.pick(SHIRTS);
   const pants = fixed?.pants ?? rng.pick(PANTS);
   const mat = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 });
+
+  // Legs pivot at the hip: the geometry is translated so rotation swings them.
   const legGeo = new THREE.BoxGeometry(0.16, 0.78, 0.18);
   legGeo.translate(0, -0.39, 0);
   const legL = new THREE.Mesh(legGeo, mat(pants));
   legL.position.set(-0.11, 0.78, 0);
   const legR = new THREE.Mesh(legGeo, mat(pants));
   legR.position.set(0.11, 0.78, 0);
+
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.62, 0.24), mat(shirt));
   torso.position.y = 1.09;
   torso.castShadow = true;
+
   const armGeo = new THREE.BoxGeometry(0.11, 0.62, 0.13);
   armGeo.translate(0, -0.28, 0);
   const armL = new THREE.Mesh(armGeo, mat(shirt));
   armL.position.set(-0.3, 1.36, 0);
   const armR = new THREE.Mesh(armGeo, mat(shirt));
   armR.position.set(0.3, 1.36, 0);
+
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), mat(skin));
   head.position.y = 1.58;
   head.castShadow = true;
+
   g.add(legL, legR, torso, armL, armR, head);
   g.userData.parts = { legL, legR, armL, armR, torso, head };
   return g;
@@ -66,6 +73,7 @@ export class Pedestrian {
     this.#placeAtCorner();
   }
 
+  /** The sidewalk position of this pedestrian's current corner of their block. */
   #cornerPos() {
     const cx = CENTRES[this.block];
     const cz = CENTRES[this.blockZ];
@@ -81,13 +89,11 @@ export class Pedestrian {
     this.target = null;
   }
 
-  /** Next waypoint: around the block loop, or across the street at a corner. */
+  /** Next waypoint: on around the block loop, or across the street at a corner. */
   #nextTarget() {
     if (this.target) return this.target;
-    const roll = this.rng.next();
-    if (roll < 0.22) {
+    if (this.rng.next() < 0.22) {
       // Cross to the neighbouring block in the direction this corner faces.
-      const p = this.#cornerPos();
       const east = this.corner === 1 || this.corner === 2;
       const south = this.corner >= 2;
       if (this.rng.chance(0.5)) {
@@ -98,7 +104,6 @@ export class Pedestrian {
         this.corner = south ? (east ? 0 : 1) : (east ? 3 : 2);
       }
       this.target = { ...this.#cornerPos(), crossing: true };
-      void p;
     } else {
       this.corner = (this.corner + 1) % 4;
       this.target = this.#cornerPos();
@@ -106,6 +111,7 @@ export class Pedestrian {
     return this.target;
   }
 
+  /** Something frightening happened nearby: run from it for a few seconds. */
   scare(x, z, radius = 26) {
     if (this.state !== 'walk') return;
     if (dist2d(this.x, this.z, x, z) < radius) {
@@ -125,6 +131,8 @@ export class Pedestrian {
   update(dt, world) {
     const parts = this.mesh.userData.parts;
     if (this.state === 'down') {
+      // Stay down until the timer runs out and the player is far away, then
+      // quietly respawn at a fresh corner.
       this.downTime -= dt;
       this.mesh.position.set(this.x, groundHeightAt(this.x, this.z) + 0.18, this.z);
       if (this.downTime <= 0 && dist2d(this.x, this.z, world.playerPos.x, world.playerPos.z) > 60) {
@@ -142,11 +150,12 @@ export class Pedestrian {
     if (this.state === 'waiting') {
       // Taxi hailer: stand at the kerb and wave.
       parts.armR.rotation.x = Math.PI * 0.85 + Math.sin(performance.now() * 0.012) * 0.25;
-      this.#stand(world);
+      this.#stand();
       return;
     }
     parts.armR.rotation.x = Math.sin(this.phase) * 0.5;
 
+    // Work out where this state is heading, and how fast.
     let speed = this.walkSpeed;
     let tx;
     let tz;
@@ -171,10 +180,12 @@ export class Pedestrian {
       if (dist2d(this.x, this.z, tx, tz) < 0.7) {
         this.target = null;
         this.#animate(dt, 0, parts);
-        this.#stand(world);
+        this.#stand();
         return;
       }
     }
+
+    // Turn toward the heading point, advance, and pose the mesh.
     const want = Math.atan2(tx - this.x, tz - this.z);
     this.heading += clamp(angleDelta(this.heading, want), -4.4 * dt, 4.4 * dt);
     this.x += Math.sin(this.heading) * speed * dt;
@@ -187,8 +198,8 @@ export class Pedestrian {
     this.mesh.rotation.y = this.heading;
   }
 
-  #stand(world) {
-    void world;
+  /** Park the mesh at the current spot, upright and facing the heading. */
+  #stand() {
     this.mesh.position.set(this.x, groundHeightAt(this.x, this.z), this.z);
     this.mesh.rotation.y = this.heading;
   }

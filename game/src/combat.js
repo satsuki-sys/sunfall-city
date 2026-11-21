@@ -1,7 +1,7 @@
-// Combat: the player's handgun (hitscan toward the camera's aim, with a tracer
-// and a puff where it lands) and the armed guards who shoot back during the
-// story. Every shot is a crime the city can hear; every hit lands somewhere
-// specific — a pedestrian, a guard, a car, or a wall.
+// Combat: the player's handgun — hitscan along the camera's aim, with a tracer
+// and a dust puff where the round lands — and the armed guards who shoot back
+// during the story. Every shot is a crime the city can hear, and every hit
+// lands somewhere specific: a pedestrian, a guard, a car or a wall.
 
 import * as THREE from 'three';
 import { dist2d } from './random.js';
@@ -24,7 +24,7 @@ export class Guard {
     this.z = z;
     this.heading = heading;
     this.health = 60;
-    this.active = false;
+    this.active = false;   // set when the story stage arms him
     this.dead = false;
     this.cooldown = 1.2;
   }
@@ -49,17 +49,18 @@ export class Guard {
     if (this.cooldown <= 0) {
       this.cooldown = world.rng.range(1.0, 1.7);
       const from = new THREE.Vector3(this.x, groundHeightAt(this.x, this.z) + 1.35, this.z);
-      const to = new THREE.Vector3(p.x, (world.playerVehicle ? 0.9 : 1.1) + (world.playerVehicle ? world.playerVehicle.mesh.position.y : groundHeightAt(p.x, p.z)), p.z);
+      const baseY = world.playerVehicle ? world.playerVehicle.mesh.position.y : groundHeightAt(p.x, p.z);
+      const to = new THREE.Vector3(p.x, (world.playerVehicle ? 0.9 : 1.1) + baseY, p.z);
       world.spawnTracer(from, to, 0xffa04d);
       world.audio.shot();
-      // Accuracy falls off with range; a moving car is harder to hit.
+      // Accuracy falls off with range, and a moving car is harder to hit.
       const hitChance = Math.max(0.12, 0.62 - d * 0.014 - (world.playerVehicle ? 0.18 : 0));
       if (world.rng.next() < hitChance) world.damagePlayer(world.rng.range(4, 9), this);
     }
   }
 }
 
-/** Ray vs sphere; returns the distance along the ray or Infinity. */
+/** Ray against sphere; returns the distance along the ray, or Infinity on a miss. */
 function raySphere(origin, dir, centre, radius) {
   const ox = centre.x - origin.x;
   const oy = centre.y - origin.y;
@@ -89,36 +90,39 @@ export class Combat {
     world.audio.shot();
     world.reportCrime('shot', world.playerPos);
 
+    // Find the nearest thing the ray touches: peds, guards, cars, buildings.
     let bestT = 90;
     let hit = null;
-    const test = (t, what) => { if (t < bestT) { bestT = t; hit = what; } };
+    const consider = (t, what) => { if (t < bestT) { bestT = t; hit = what; } };
     for (const ped of world.peds) {
       if (ped.state === 'down' || ped.state === 'riding') continue;
-      const c = new THREE.Vector3(ped.x, groundHeightAt(ped.x, ped.z) + 1.0, ped.z);
-      test(raySphere(origin, dir, c, 0.62), { kind: 'ped', ped });
+      const centre = new THREE.Vector3(ped.x, groundHeightAt(ped.x, ped.z) + 1.0, ped.z);
+      consider(raySphere(origin, dir, centre, 0.62), { kind: 'ped', ped });
     }
     for (const guard of world.guards) {
       if (guard.dead) continue;
-      const c = new THREE.Vector3(guard.x, groundHeightAt(guard.x, guard.z) + 1.0, guard.z);
-      test(raySphere(origin, dir, c, 0.62), { kind: 'guard', guard });
+      const centre = new THREE.Vector3(guard.x, groundHeightAt(guard.x, guard.z) + 1.0, guard.z);
+      consider(raySphere(origin, dir, centre, 0.62), { kind: 'guard', guard });
     }
     for (const car of world.cars) {
-      const c = new THREE.Vector3(car.x, car.mesh.position.y + 0.8, car.z);
-      test(raySphere(origin, dir, c, car.spec.len * 0.52), { kind: 'car', car });
+      const centre = new THREE.Vector3(car.x, car.mesh.position.y + 0.8, car.z);
+      consider(raySphere(origin, dir, centre, car.spec.len * 0.52), { kind: 'car', car });
     }
-    for (const c of world.colliders) {
-      // Cheap building stop: sample the ray against each AABB as a sphere at its centre.
-      const cx = (c.minX + c.maxX) / 2;
-      const cz = (c.minZ + c.maxZ) / 2;
-      const r = Math.max(c.maxX - c.minX, c.maxZ - c.minZ) / 2;
-      test(raySphere(origin, dir, new THREE.Vector3(cx, 6, cz), r), { kind: 'wall' });
+    for (const box of world.colliders) {
+      // Cheap building stop: test the ray against a sphere at the AABB's centre.
+      const cx = (box.minX + box.maxX) / 2;
+      const cz = (box.minZ + box.maxZ) / 2;
+      const r = Math.max(box.maxX - box.minX, box.maxZ - box.minZ) / 2;
+      consider(raySphere(origin, dir, new THREE.Vector3(cx, 6, cz), r), { kind: 'wall' });
     }
 
+    // Draw the tracer and puff whether or not anything was hit.
     const end = origin.clone().addScaledVector(dir, bestT);
     const muzzle = origin.clone().addScaledVector(dir, 0.7);
     muzzle.y -= 0.12;
     world.spawnTracer(muzzle, end, 0xffe9a0);
     world.spawnPuff(end, 0xd8cfc0);
+
     if (!hit) return true;
     if (hit.kind === 'ped') {
       hit.ped.knockDown();

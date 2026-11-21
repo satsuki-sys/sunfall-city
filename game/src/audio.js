@@ -1,8 +1,8 @@
-// All sound is synthesised with WebAudio — there are no audio files. A soft
-// island pad drifts under everything; engines, sirens, horns, shots and coins
-// are small oscillator/noise recipes. Nothing plays until start() is called
-// from a user gesture, and every method is safe when audio is unavailable
-// (headless screenshot runs never start it).
+// Every sound in the game is synthesised with WebAudio — there are no audio
+// files. A soft island pad drifts under everything, while engines, sirens,
+// horns, shots and coins are small oscillator/noise recipes. Nothing plays
+// until start() is called from a user gesture, and every method stays safe
+// when audio is unavailable (headless screenshot runs never start it).
 
 export class SoundBank {
   constructor() {
@@ -28,7 +28,7 @@ export class SoundBank {
     this.#siren();
   }
 
-  /** Two detuned triangles through a slow filter: warm evening chords. */
+  /** Two detuned triangles through a slow-sweeping filter: warm evening chords. */
   #pad() {
     const ctx = this.ctx;
     const gain = ctx.createGain();
@@ -37,10 +37,11 @@ export class SoundBank {
     filter.type = 'lowpass';
     filter.frequency.value = 700;
     filter.connect(gain).connect(this.master);
-    [196, 246.9, 293.7].forEach((f, i) => {
+    const chord = [196, 246.9, 293.7];
+    chord.forEach((freq, i) => {
       const osc = ctx.createOscillator();
       osc.type = 'triangle';
-      osc.frequency.value = f;
+      osc.frequency.value = freq;
       osc.detune.value = i * 4 - 4;
       osc.connect(filter);
       osc.start();
@@ -53,6 +54,7 @@ export class SoundBank {
     lfo.start();
   }
 
+  /** One sawtooth behind a lowpass: pitch and loudness follow the car's speed. */
   #engine() {
     const ctx = this.ctx;
     this.engineOsc = ctx.createOscillator();
@@ -67,7 +69,7 @@ export class SoundBank {
     this.engineOsc.start();
   }
 
-  /** speedRatio 0..1 while driving; call with null to idle the engine silent. */
+  /** speedRatio 0..1 while driving; pass null to idle the engine to silence. */
   engine(speedRatio) {
     if (!this.ctx || !this.engineOsc) return;
     const t = this.ctx.currentTime;
@@ -79,6 +81,7 @@ export class SoundBank {
     this.engineGain.gain.setTargetAtTime(0.05 + speedRatio * 0.05, t, 0.08);
   }
 
+  /** A triangle whose pitch an LFO rocks up and down: the classic two-tone wail. */
   #siren() {
     const ctx = this.ctx;
     this.sirenOsc = ctx.createOscillator();
@@ -96,12 +99,13 @@ export class SoundBank {
     this.sirenLFO.start();
   }
 
-  /** level 0..1 — how present the nearest police siren is. */
+  /** level 0..1 — how present the nearest police siren should be. */
   siren(level) {
     if (!this.ctx || !this.sirenGain) return;
     this.sirenGain.gain.setTargetAtTime(level * 0.055, this.ctx.currentTime, 0.2);
   }
 
+  /** Shared one-shot: a pitch glide from freqA to freqB with a quick decay. */
   #blip(freqA, freqB, seconds, type = 'square', volume = 0.12) {
     if (!this.ctx) return;
     const ctx = this.ctx;
@@ -125,6 +129,7 @@ export class SoundBank {
   door() { this.#blip(210, 140, 0.09, 'triangle', 0.12); }
   fail() { this.#blip(300, 130, 0.4, 'sawtooth', 0.1); }
 
+  /** A gunshot: a burst of filtered noise with a fast-falling envelope. */
   shot() {
     if (!this.ctx) return;
     const ctx = this.ctx;
