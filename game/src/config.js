@@ -1,61 +1,68 @@
-// Every tuning number and colour in one place. The playfield is a fixed 1280x720 logical area;
-// the renderer scales it to the window, so no rule below depends on the screen size.
+// Sunfall City — every tuning number in one place. Units are metres and seconds.
+// The city is a square grid of avenues: BLOCKS blocks per side, each PITCH apart,
+// with ROAD_WIDE streets between building plots. South edge (high z) is the beach.
 
-export const FIELD = { width: 1280, height: 720, groundY: 664 };
+export const CITY = {
+  blocks: 11,          // blocks per side
+  pitch: 44,           // distance between avenue centrelines
+  roadWide: 14,        // street width
+  get half() { return (this.blocks * this.pitch) / 2; }, // 242: city spans -242..242
+  beachZ: 252,         // sand starts here
+  waterZ: 292,         // sea starts here
+};
 
-/** The simulation's fixed step, in seconds: 60 updates a second whatever the display's rate. */
-export const STEP = 1 / 60;
+/** Avenue centrelines, the same set on both axes: -242, -198, ..., 242. */
+export function avenueLines() {
+  const lines = [];
+  for (let i = 0; i <= CITY.blocks; i += 1) lines.push(-CITY.half + i * CITY.pitch);
+  return lines;
+}
+
+/** Block plot centres: -220, -176, ..., 220. */
+export function blockCentres() {
+  const centres = [];
+  for (let i = 0; i < CITY.blocks; i += 1) centres.push(-CITY.half + CITY.pitch / 2 + i * CITY.pitch);
+  return centres;
+}
 
 export const PLAYER = {
-  width: 72,
-  height: 24,
-  speed: 560,
-  invulnerable: 1.5,
+  radius: 0.45,
+  walkSpeed: 5.2,
+  sprintSpeed: 8.6,
+  health: 100,
+  reachCar: 3.4,       // how close to a car door F works
 };
 
-export const LIVES = 3;
-
-export const BLOCK = {
-  minWidth: 40,
-  maxWidth: 110,
-  height: 36,
-  speed: 240,
-  speedPerLevel: 30,
-  speedJitter: 90,
-  interval: 0.55,
-  intervalScale: 0.88,
-  minInterval: 0.14,
-  dodgePoints: 1,
+export const CAR_TYPES = {
+  sedan:  { len: 4.3, wid: 1.9, maxSpeed: 31, accel: 13, health: 100 },
+  sport:  { len: 4.4, wid: 1.95, maxSpeed: 41, accel: 19, health: 90 },
+  taxi:   { len: 4.3, wid: 1.9, maxSpeed: 30, accel: 13, health: 100 },
+  truck:  { len: 5.6, wid: 2.2, maxSpeed: 24, accel: 9, health: 160 },
+  police: { len: 4.4, wid: 1.95, maxSpeed: 37, accel: 17, health: 140 },
 };
 
-export const COIN = {
-  size: 24,
-  speed: 190,
-  speedPerLevel: 14,
-  interval: 1.4,
-  intervalJitter: 0.8,
-  points: 10,
+/** Paint jobs for civilian cars: sun-bleached pastels and a few loud ones. */
+export const CAR_COLORS = [
+  0xf2e3c6, 0xe8836b, 0x63b3a6, 0xf2c14e, 0x7fb2d9, 0xd96c85,
+  0x9bc53d, 0xf7f3ea, 0x5b8e7d, 0xe4572e, 0x8d99ae, 0x2a9d8f,
+];
+
+export const WANTED = {
+  max: 5,
+  decaySeconds: 26,    // time without a fresh crime before one star fades
+  policeByStars: [0, 1, 2, 3, 4, 5],
 };
 
-/** Seconds of play per level, and the last level: speeds and spawn rates stop growing there. */
-export const LEVEL = { seconds: 12, max: 12 };
+export const SAVE_KEY = 'sunfall-city.save.v1';
 
-/** How many falling things can exist at once; the pool is allocated once, at boot. */
-export const POOL_SIZE = 64;
-
+/** Golden-hour palette: the whole game is lit like 6:40 pm on the coast. */
 export const PALETTE = {
-  backdrop: '#11141b',
-  sky: '#1b1f2a',
-  ground: '#2a3040',
-  player: '#4fc3f7',
-  block: '#e5534b',
-  coin: '#f2c94c',
-  panel: '#252b38',
-  text: '#eef1f5',
-  muted: '#8b93a3',
+  sky: 0xffc98a,
+  fog: 0xf6a96b,
+  sun: 0xffdf9e,
+  sand: 0xeed9a4,
+  water: 0x2e8fa3,
+  asphalt: 0x3c4148,
+  sidewalk: 0xcfc4ae,
+  grass: 0x8fae5d,
 };
-
-export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
-
-/** Where the best score is kept between visits (this browser only). */
-export const BEST_KEY = 'block-dodger.best';

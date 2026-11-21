@@ -3,17 +3,98 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Block Dodger</title>
+<title>Sunfall City — an open-world crime game</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
-  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1c1410; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #app, #app canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  /* ---------- HUD ---------- */
+  #hud { display: none; position: fixed; inset: 0; pointer-events: none; color: #fff7e8; }
+  #stats { position: absolute; top: 16px; left: 18px; text-shadow: 0 1px 3px rgba(0,0,0,.55); }
+  #health-wrap { width: 210px; height: 13px; background: rgba(10,14,18,.55); border: 1px solid rgba(255,247,232,.5); border-radius: 7px; overflow: hidden; }
+  #health-bar { height: 100%; width: 100%; background: #7bc96f; transition: width .18s ease; }
+  #cash { font-size: 24px; font-weight: 800; letter-spacing: .4px; margin-top: 5px; color: #ffe9a8; }
+  #stars { position: absolute; top: 12px; right: 20px; font-size: 27px; letter-spacing: 3px; color: #ffd23e; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
+  #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); text-align: center; background: rgba(12,16,20,.45); padding: 7px 20px 9px; border-radius: 10px; max-width: 46%; }
+  #objective-title { font-size: 12px; font-weight: 800; letter-spacing: 3px; color: #ffd23e; }
+  #objective-text { font-size: 16.5px; font-weight: 600; margin-top: 1px; }
+  #objective-dist { font-size: 12.5px; color: #ffe9c9; opacity: .85; }
+  #banner { position: absolute; top: 21%; left: 50%; transform: translateX(-50%); max-width: 62%; text-align: center; font-size: 19px; font-weight: 600; font-style: italic; color: #ffe9c9; text-shadow: 0 2px 6px rgba(0,0,0,.75); opacity: 0; transition: opacity .3s ease; }
+  #toast { position: absolute; top: 34%; left: 50%; transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity .35s ease; }
+  #toast-title { font-family: Georgia, "Times New Roman", serif; font-size: 44px; font-weight: 700; letter-spacing: 5px; color: #fff3d6; text-shadow: 0 3px 14px rgba(0,0,0,.7); }
+  #toast-sub { font-size: 17px; letter-spacing: 2px; color: #ffd98f; text-shadow: 0 2px 6px rgba(0,0,0,.7); }
+  #prompt { position: absolute; bottom: 118px; left: 50%; transform: translateX(-50%); background: rgba(12,16,20,.62); padding: 6px 16px; border-radius: 8px; font-size: 15.5px; font-weight: 600; display: none; }
+  #speed { position: absolute; right: 24px; bottom: 216px; font-size: 21px; font-weight: 800; color: #fff7e8; text-shadow: 0 1px 4px rgba(0,0,0,.65); display: none; }
+  #minimap-wrap { position: absolute; right: 18px; bottom: 18px; width: 184px; height: 184px; border-radius: 50%; border: 3px solid rgba(255,247,232,.65); overflow: hidden; box-shadow: 0 4px 18px rgba(0,0,0,.45); background: #17303a; }
+  #minimap { width: 184px; height: 184px; display: block; }
+  #crosshair { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255,247,232,.9); box-shadow: 0 0 5px rgba(0,0,0,.8); display: none; }
+  #vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 52%, rgba(200,30,20,.55) 100%); opacity: 0; }
+  #hint { position: absolute; left: 18px; bottom: 16px; font-size: 12.5px; line-height: 1.5; color: rgba(255,247,232,.75); text-shadow: 0 1px 3px rgba(0,0,0,.7); }
+  /* ---------- Screens ---------- */
+  .screen { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; text-align: center; color: #fff7e8; z-index: 5; }
+  #title-screen { background: linear-gradient(180deg, rgba(38,20,8,.18) 0%, rgba(38,20,8,.42) 62%, rgba(20,10,6,.78) 100%); }
+  .screen h1 { font-family: Georgia, "Times New Roman", serif; font-size: 76px; margin: 0; letter-spacing: 7px; color: #fff3d6; text-shadow: 0 4px 26px rgba(120,40,0,.65), 0 2px 3px rgba(0,0,0,.5); }
+  .screen h2 { font-family: Georgia, serif; font-size: 40px; margin: 0; letter-spacing: 5px; color: #fff3d6; text-shadow: 0 3px 12px rgba(0,0,0,.7); }
+  .tagline { font-size: 18px; letter-spacing: 2.5px; color: #ffd98f; margin: 10px 0 30px; text-shadow: 0 2px 6px rgba(0,0,0,.6); }
+  .btn { pointer-events: auto; cursor: pointer; background: #e4572e; color: #fff7e8; border: none; font-size: 19px; font-weight: 800; letter-spacing: 2px; padding: 13px 42px; margin: 6px; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,.45); }
+  .btn:hover { background: #f06a3d; }
+  .btn.secondary { background: rgba(20,28,34,.75); border: 1px solid rgba(255,247,232,.5); }
+  .controls { margin-top: 30px; font-size: 14.5px; line-height: 1.75; color: rgba(255,247,232,.88); text-shadow: 0 1px 4px rgba(0,0,0,.75); }
+  .controls b { color: #ffd98f; }
+  #pause-screen, #end-screen { background: rgba(16,10,8,.55); }
+  .fine { font-size: 16px; color: #ffb4a2; margin: 8px 0 22px; }
 </style>
 </head>
 <body>
-<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
-<p id="status" role="status" aria-live="polite"></p>
+<div id="app"></div>
+
+<div id="hud">
+  <div id="vignette"></div>
+  <div id="stats">
+    <div id="health-wrap"><div id="health-bar"></div></div>
+    <div id="cash">$0</div>
+  </div>
+  <div id="stars">☆☆☆☆☆</div>
+  <div id="objective">
+    <div id="objective-title"></div>
+    <div id="objective-text"></div>
+    <div id="objective-dist"></div>
+  </div>
+  <div id="banner"></div>
+  <div id="toast"><div id="toast-title"></div><div id="toast-sub"></div></div>
+  <div id="prompt"></div>
+  <div id="speed"></div>
+  <div id="minimap-wrap"><canvas id="minimap" width="184" height="184"></canvas></div>
+  <div id="crosshair"></div>
+  <div id="hint">WASD move · mouse look · F car · click shoot<br>Shift sprint · Space handbrake · P pause</div>
+</div>
+
+<div id="title-screen" class="screen">
+  <h1>SUNFALL CITY</h1>
+  <p class="tagline">ONE COURIER. ONE COAST. EVERY SUNSET FOR SALE.</p>
+  <button class="btn" id="btn-play">NEW GAME</button>
+  <button class="btn secondary" id="btn-continue" style="display:none">CONTINUE</button>
+  <div class="controls">
+    <b>WASD</b> drive / walk &nbsp;·&nbsp; <b>Mouse</b> look &nbsp;·&nbsp; <b>Click</b> shoot<br>
+    <b>F</b> enter / exit car &nbsp;·&nbsp; <b>Shift</b> sprint &nbsp;·&nbsp; <b>Space</b> handbrake &nbsp;·&nbsp; <b>H</b> horn &nbsp;·&nbsp; <b>P</b> pause
+  </div>
+</div>
+
+<div id="pause-screen" class="screen">
+  <h2>PAUSED</h2>
+  <p class="tagline">The city waits. It is good at that.</p>
+  <button class="btn" id="btn-resume">RESUME</button>
+  <button class="btn secondary" id="btn-quit-title">SAVE &amp; TITLE</button>
+</div>
+
+<div id="end-screen" class="screen">
+  <h2 id="end-title">DOWNED</h2>
+  <p class="fine" id="end-text"></p>
+  <button class="btn" id="btn-respawn">BACK ON THE STREET</button>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

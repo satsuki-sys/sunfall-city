@@ -1,53 +1,67 @@
-// Keyboard and pointer input. Held keys give a steering direction; one-shot presses (start or
-// restart, pause) are queued as bit flags and taken once by the loop, so a press between two
-// frames is never lost and never counted twice.
+// Keyboard and mouse state, read by the controllers each frame. Keys are stored
+// by code (KeyW, ArrowUp, ...) so layout never matters; the game also tracks
+// one-shot presses (for F to enter a car, H to honk) and mouse movement for the
+// orbit camera, which uses pointer lock while playing.
 
-export const ACTION_CONFIRM = 1;
-export const ACTION_PAUSE = 2;
+export class Input {
+  constructor(element) {
+    this.keys = new Set();
+    this.pressed = new Set();   // codes that went down since the last frame
+    this.mouseDX = 0;
+    this.mouseDY = 0;
+    this.mouseDown = false;
+    this.rightDown = false;
+    this.wheel = 0;
+    this.locked = false;
 
-const LEFT = new Set(['ArrowLeft', 'KeyA']);
-const RIGHT = new Set(['ArrowRight', 'KeyD']);
-const CONFIRM = new Set(['Space', 'Enter']);
-const PAUSE = new Set(['KeyP', 'Escape']);
+    addEventListener('keydown', (e) => {
+      if (!e.repeat) this.pressed.add(e.code);
+      this.keys.add(e.code);
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+    });
+    addEventListener('keyup', (e) => this.keys.delete(e.code));
+    addEventListener('blur', () => { this.keys.clear(); this.mouseDown = false; this.rightDown = false; });
 
-export function createInput(target) {
-  let left = false;
-  let right = false;
-  let actions = 0;
+    element.addEventListener('mousedown', (e) => {
+      if (e.button === 0) this.mouseDown = true;
+      if (e.button === 2) this.rightDown = true;
+    });
+    addEventListener('mouseup', (e) => {
+      if (e.button === 0) this.mouseDown = false;
+      if (e.button === 2) this.rightDown = false;
+    });
+    element.addEventListener('contextmenu', (e) => e.preventDefault());
+    addEventListener('mousemove', (e) => {
+      if (this.locked || this.rightDown) {
+        this.mouseDX += e.movementX || 0;
+        this.mouseDY += e.movementY || 0;
+      }
+    });
+    element.addEventListener('wheel', (e) => { this.wheel += Math.sign(e.deltaY); }, { passive: true });
+    document.addEventListener('pointerlockchange', () => {
+      this.locked = document.pointerLockElement === element;
+    });
+  }
 
-  window.addEventListener('keydown', (event) => {
-    if (LEFT.has(event.code)) left = true;
-    else if (RIGHT.has(event.code)) right = true;
-    else if (CONFIRM.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_CONFIRM;
-    } else if (PAUSE.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_PAUSE;
-    } else return;
-    event.preventDefault();
-  });
-  window.addEventListener('keyup', (event) => {
-    if (LEFT.has(event.code)) left = false;
-    else if (RIGHT.has(event.code)) right = false;
-  });
-  // A key released while the tab is hidden never sends keyup: let go of everything on blur.
-  window.addEventListener('blur', () => {
-    left = false;
-    right = false;
-  });
-  target.addEventListener('pointerdown', () => {
-    actions |= ACTION_CONFIRM;
-  });
+  down(...codes) { return codes.some((c) => this.keys.has(c)); }
 
-  return {
-    /** -1 for left, 1 for right, 0 for neither or both. */
-    direction() {
-      return (right ? 1 : 0) - (left ? 1 : 0);
-    },
-    /** The one-shot presses since the last call, as ACTION_* flags. */
-    takeActions() {
-      const taken = actions;
-      actions = 0;
-      return taken;
-    },
-  };
+  /** True only on the frame the key first went down; consumes the press. */
+  justPressed(code) {
+    if (!this.pressed.has(code)) return false;
+    this.pressed.delete(code);
+    return true;
+  }
+
+  /** Call once per frame after the controllers have read everything. */
+  endFrame() {
+    this.pressed.clear();
+    this.mouseDX = 0;
+    this.mouseDY = 0;
+    this.wheel = 0;
+  }
+
+  /** Forward input as a -1..1 axis: (a, b) means b is positive. */
+  axis(neg, pos) {
+    return (this.down(...pos) ? 1 : 0) - (this.down(...neg) ? 1 : 0);
+  }
 }
