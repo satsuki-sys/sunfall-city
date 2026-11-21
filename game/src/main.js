@@ -1,7 +1,7 @@
-// Boot and screens: title, pause, and the downed/busted end screen. The Game
-// (world.js) runs the city itself; this file only wires the menus, pointer
-// lock and the frame loop — plus the ?shot= staging that produces the entry's
-// screenshots.
+// Boot and screens: the title, the pause menu and the downed/busted end
+// screen. The city itself belongs to world.js; this module wires the menus,
+// the pointer lock and the frame loop — and, when the URL carries a ?shot=
+// parameter, stages the scenes the entry's screenshots are rendered from.
 
 import { Game } from './world.js';
 import { loadSave, clearSave } from './save.js';
@@ -32,15 +32,15 @@ const game = new Game(byId('app'), {
   },
 });
 
-window.__game = game; // staging/debug handle; the screenshot rig reads it
+window.__game = game; // the staging/debug handle the screenshot rig reads
 
 function lockPointer() {
   game.renderer.domElement.requestPointerLock?.();
 }
 
-// Losing pointer lock mid-play (the player pressed Esc, most likely) pauses —
-// but only once the lock has genuinely been held a moment, so the brief lock
-// churn of starting a game never trips it.
+// Losing the pointer lock mid-play (Esc, most likely) means pause — but only
+// once the lock has genuinely been held for a moment, so the brief lock
+// churn while a game starts can never trip it.
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement === game.renderer.domElement) lockHeldAt = performance.now();
   else if (game.state === 'playing' && !shot && performance.now() - lockHeldAt > 1200) pauseGame();
@@ -60,7 +60,7 @@ function startPlaying(fresh) {
   lockPointer();
 }
 
-/** The pause screen's running tally: cash, fares and discs so far. */
+/** Fill the pause screen's tally line: cash, fares, discs, story stage. */
 function fillPauseStats() {
   const story = ['First Run', 'Borrowed Sunshine', 'The Sunset Score', 'Story complete'][game.missions.storyIndex];
   byId('pause-stats').textContent =
@@ -76,7 +76,7 @@ function pauseGame() {
 }
 
 if (shot) {
-  // Screenshot mode: stage the scene and skip every menu.
+  // Screenshot mode: stage the requested scene and skip the menus entirely.
   stageShot(game, shot);
 } else {
   titleScreen.style.display = 'flex';
@@ -118,8 +118,8 @@ if (shot) {
   });
 }
 
-// Frame loop. Timestamps from requestAnimationFrame can lag performance.now()
-// on a busy first frame; a negative step would turn the camera's smoothing
+// The frame loop. requestAnimationFrame timestamps can trail performance.now()
+// on a busy first frame, and a negative step would turn the camera's smoothing
 // lerp into a catapult, so the step is clamped at both ends.
 const clock = { last: performance.now() };
 function frame(now) {

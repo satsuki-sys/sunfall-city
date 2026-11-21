@@ -1,16 +1,17 @@
-// Traffic: civilian cars that cruise the avenue grid on the correct side of
-// the road, choose turns at intersections, follow the car ahead at a smooth
-// distance, slow down when cross traffic is moving through the junction in
-// front of them and honk when the player blocks them for too long. Each
-// driver is a small state machine steering toward a point a little ahead on
-// its lane, with its own patience for being stuck.
+// Traffic: civilian cars cruising the avenue grid on the correct side of
+// the road. They pick turns at intersections, follow the car ahead at a
+// smooth distance instead of slamming between pedals, ease off early when
+// cross traffic is moving through the junction in front of them, and honk
+// when the player blocks them past their patience. Each driver is a small
+// state machine steering at a point a little ahead on its lane, with its
+// own personal patience for being stuck.
 
 import { avenueLines } from './config.js';
 import { angleDelta, clamp, dist2d } from './random.js';
 import { stepCar } from './vehicles.js';
 
 const AVENUES = avenueLines();
-const LANE = 3.4; // offset from the avenue centreline, for right-hand traffic
+const LANE = 3.4; // lane offset from the avenue centreline, right-hand traffic
 
 /** The point on the driving lane, `along` metres along the avenue at `line`. */
 function lanePoint(line, dirX, dirZ, along) {
@@ -25,7 +26,7 @@ export class TrafficDriver {
   constructor(car, rng) {
     this.car = car;
     this.rng = rng;
-    // Snap onto the nearest avenue and pick a direction of travel along it.
+    // Settle onto the nearest avenue and choose a direction along it.
     if (rng.chance(0.5)) {
       this.line = nearest(car.z);
       this.dirX = rng.chance(0.5) ? 1 : -1;
@@ -37,7 +38,7 @@ export class TrafficDriver {
     }
     this.targetSpeed = rng.range(9, 14);
     this.blockedTime = 0;
-    this.patience = rng.range(2.2, 3.8); // seconds stuck before a honk
+    this.patience = rng.range(2.2, 3.8); // seconds stuck before the horn comes out
     car.driver = 'traffic';
   }
 
@@ -49,7 +50,7 @@ export class TrafficDriver {
     const [ndx, ndz] = turningLeft
       ? [this.dirZ, -this.dirX]
       : [-this.dirZ, this.dirX];
-    // The avenue we turn onto is the cross street we are standing on.
+    // The avenue turned onto is the cross street the car is standing on.
     this.line = this.dirX !== 0 ? nearest(this.car.x) : nearest(this.car.z);
     this.dirX = ndx;
     this.dirZ = ndz;
@@ -70,14 +71,14 @@ export class TrafficDriver {
     const toIntersection = ahead === undefined ? 999 : Math.abs(ahead);
     if (toIntersection < 6 && Math.abs(cross - this.line) < 8 && this.rng.chance(dt * 0.9)) this.#chooseTurn();
 
-    // Steer toward a look-ahead point on the lane.
+    // Steer at a look-ahead point riding on the lane.
     const lookAhead = lanePoint(this.line, this.dirX, this.dirZ, along + step * 14);
     const want = Math.atan2(lookAhead.x - car.x, lookAhead.z - car.z);
     const steer = clamp(angleDelta(car.heading, want) * 2.2, -1, 1);
 
-    // Car-following: ease toward a speed that holds a ~7 m gap to whatever is
-    // slow in front, instead of slamming between full throttle and full brake.
-    // A genuinely closing gap still gets the brake pedal.
+    // Car-following: settle toward the speed that holds roughly a 7 m gap
+    // to whatever is slow ahead, rather than alternating full throttle and
+    // full brake. A gap that is genuinely closing still earns the brake.
     const fwdX = Math.sin(car.heading);
     const fwdZ = Math.cos(car.heading);
     let desired = this.targetSpeed;
@@ -96,13 +97,13 @@ export class TrafficDriver {
     }
 
     // Junction caution: cross traffic moving through the intersection just
-    // ahead means easing off early rather than arriving at full speed.
+    // ahead means lifting off early instead of arriving at full speed.
     if (toIntersection < 13) {
       const ix = this.dirX !== 0 ? along + ahead : this.line;
       const iz = this.dirX !== 0 ? this.line : along + ahead;
       for (const other of world.cars) {
         if (other === car) continue;
-        if (Math.abs(other.speed) > 1 && dist2d(other, { x: ix, z: iz }) < 10) {
+        if (Math.abs(other.speed) > 1 && dist2d(other.x, other.z, ix, iz) < 10) {
           if (desired > 5.5) desired = 5.5;
           break;
         }
@@ -111,7 +112,7 @@ export class TrafficDriver {
 
     const throttle = brake ? 0 : clamp((desired - car.speed) * 0.45, 0, 0.8);
 
-    // Blocked for longer than this driver can stand? Honk about it.
+    // Stuck longer than this driver's patience runs? The horn says so.
     if (brake || throttle <= 0.01) {
       this.blockedTime += dt;
       if (this.blockedTime > this.patience && car.honkCooldown <= 0) {
@@ -123,7 +124,7 @@ export class TrafficDriver {
 
     stepCar(car, { throttle, steer, brake }, dt, world.colliders, world.cars);
 
-    // Drift gently back onto the lane centreline over time.
+    // Over time, drift gently back onto the lane centreline.
     const lp = lanePoint(this.line, this.dirX, this.dirZ, along);
     if (this.dirX !== 0) car.z += (lp.z - car.z) * Math.min(1, dt * 0.7);
     else car.x += (lp.x - car.x) * Math.min(1, dt * 0.7);

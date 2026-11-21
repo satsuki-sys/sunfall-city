@@ -1,9 +1,9 @@
-// The HUD is plain DOM layered over the canvas: health, cash and the sun-disc
-// count at the top left, wanted stars at the top right, the mission objective
-// under the top centre, a banner for story messages, an interaction prompt,
-// a speedometer, a bust meter that fills while the law closes in on foot,
-// and a damage vignette. Setters cache their last value so unchanged readouts
-// never touch the DOM twice.
+// The HUD is plain DOM floating over the canvas: health, cash and the
+// sun-disc tally at the top left, wanted stars at the top right, the mission
+// objective centred under the top edge, a queue of story banners, an
+// interaction prompt, a speedometer, a bust meter that fills while the law
+// closes in on foot, and a damage vignette. Every setter remembers the last
+// value it wrote, so a readout that has not changed never touches the DOM.
 
 export class Hud {
   constructor() {
@@ -52,7 +52,7 @@ export class Hud {
     this.cashEl.textContent = `$${Math.floor(n).toLocaleString('en-US')}`;
   }
 
-  /** The sun-disc tally under the cash: found out of the city's total. */
+  /** The tally under the cash line: discs found out of the city's total. */
   setPackages(found, total) {
     if (found === this.lastPackages) return;
     this.lastPackages = found;
@@ -67,7 +67,7 @@ export class Hud {
     this.starsEl.style.opacity = n === 0 ? '0.25' : '1';
   }
 
-  /** The bust meter: visible only while it is filling (frac > 0). */
+  /** The bust meter stays hidden until it starts to fill (frac > 0). */
   setBust(frac) {
     const shown = frac > 0.01;
     const rounded = Math.round(frac * 40);
@@ -87,7 +87,7 @@ export class Hud {
 
   clearObjective() { this.objectiveEl.style.display = 'none'; }
 
-  /** Queue a story banner; queued banners play one after another in update(). */
+  /** Queue a story banner; update() plays the queue one banner at a time. */
   message(text, color = '#ffe9c9') {
     this.bannerQueue.push({ text, color });
   }
@@ -116,7 +116,7 @@ export class Hud {
 
   damageFlash() { this.vignette = 0.75; }
 
-  /** Advance the banner queue, the toast fade and the damage vignette. */
+  /** Tick the banner queue, the toast fade and the damage vignette. */
   update(dt) {
     if (this.bannerTimer > 0) {
       this.bannerTimer -= dt;

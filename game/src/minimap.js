@@ -1,15 +1,15 @@
 // The minimap: a north-up canvas plot of the avenue grid, the beach and the
-// sea, with blips for the player, the player's car, the police, the sun discs
-// still waiting out there and whatever the current objective points at. It is
-// redrawn every frame from live positions, so nothing here keeps state
-// between frames. The on-page legend beside the map names each marker.
+// sea, carrying blips for the player, the player's car, the police, the sun
+// discs still out there, and whatever the current objective points at. It is
+// redrawn from live positions every frame, so it keeps no state of its own
+// between frames. The legend rendered beside the map names each marker.
 
 import { CITY, avenueLines } from './config.js';
 
-const SIZE = 184;             // canvas edge, in pixels
+const SIZE = 184;             // canvas edge in pixels
 const SPAN = 620;             // world metres shown across the map
 const SCALE = SIZE / SPAN;
-const ORIGIN = -270;          // world x/z sitting at the map's top-left corner
+const ORIGIN = -270;          // world x/z that lands on the map's top-left
 
 const mapX = (x) => (x - ORIGIN) * SCALE;
 const mapZ = (z) => (z - ORIGIN) * SCALE;
@@ -28,7 +28,7 @@ export class Minimap {
     g.arc(SIZE / 2, SIZE / 2, SIZE / 2 - 1, 0, Math.PI * 2);
     g.clip();
 
-    // Ground: land first, then the beach band, then the sea to the south.
+    // Ground: land as the base, a band of beach, then the sea down south.
     g.fillStyle = '#274b3a';
     g.fillRect(0, 0, SIZE, SIZE);
     g.fillStyle = '#e8d29a';
@@ -36,7 +36,7 @@ export class Minimap {
     g.fillStyle = '#2e8fa3';
     g.fillRect(0, mapZ(CITY.waterZ), SIZE, SIZE - mapZ(CITY.waterZ));
 
-    // Roads: one stroke per avenue, on each axis.
+    // Roads: one stroke for every avenue, drawn on both axes.
     g.strokeStyle = '#565e68';
     g.lineWidth = Math.max(2, CITY.roadWide * SCALE);
     for (const a of this.avenues) {
@@ -44,7 +44,7 @@ export class Minimap {
       g.beginPath(); g.moveTo(0, mapZ(a)); g.lineTo(SIZE, mapZ(a)); g.stroke();
     }
 
-    // Sun discs still uncollected: small amber dots, steady — treasure, not alarm.
+    // Uncollected sun discs: small steady amber dots — treasure, not alarm.
     const discs = world.missions?.discs;
     if (discs) {
       g.fillStyle = '#ffb02e';
@@ -56,7 +56,7 @@ export class Minimap {
       }
     }
 
-    // Police blips, flashing blue and red in turn.
+    // Police blips, alternating blue and red like the light bars do.
     const flashBlue = Math.floor(performance.now() / 280) % 2 === 0;
     for (const car of world.cars) {
       if (car.driver !== 'police' || car.health <= 0) continue;
@@ -64,13 +64,13 @@ export class Minimap {
       g.fillRect(mapX(car.x) - 2.5, mapZ(car.z) - 2.5, 5, 5);
     }
 
-    // The player's own car, marked while they are away from it on foot.
+    // The player's car, marked for as long as they are away from it on foot.
     if (!world.playerVehicle && world.lastCar) {
       g.fillStyle = '#f7f3ea';
       g.fillRect(mapX(world.lastCar.x) - 2, mapZ(world.lastCar.z) - 2, 4, 4);
     }
 
-    // Objective marker: a small diamond in the target's colour.
+    // Objective marker: a small diamond in the target's own colour.
     const target = world.missions?.target;
     if (target) {
       g.fillStyle = target.color ?? '#ffd23e';
@@ -85,7 +85,7 @@ export class Minimap {
       g.fill();
     }
 
-    // Player arrow, rotated to face the way the player (or their car) faces.
+    // Player arrow, turned to the heading of the player or of their car.
     const p = world.playerPos;
     const heading = world.playerVehicle ? world.playerVehicle.heading : world.player.heading;
     g.translate(mapX(p.x), mapZ(p.z));
@@ -102,10 +102,10 @@ export class Minimap {
   }
 }
 
-/** World heading (0 = +z/south, growing toward +x/east) as a canvas rotation. */
+/** Convert a world heading (0 = +z/south, growing toward +x/east) for canvas. */
 function headingToMap(heading) {
-  // Canvas y grows downward (south) and x rightward (east), so a heading of 0
-  // points down the map and PI/2 points right: the up-arrow rotates by exactly
-  // the heading, unchanged.
+  // Canvas y runs downward (south) and x rightward (east), so a heading of 0
+  // already points down the map and PI/2 points right: the up-arrow rotates
+  // by the heading exactly as it stands.
   return heading;
 }

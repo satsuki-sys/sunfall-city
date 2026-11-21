@@ -1,9 +1,10 @@
-// The player: a courier in a teal shirt. On foot they walk and sprint with a
-// swing of the arms, turn with the camera, and collide with walls and cars;
-// F gets into the nearest car (hot-wiring a stranger's ride is a crime when
-// someone sees it) and F again gets out. The camera is a soft orbit rig that
-// follows behind, pulls in rather than clipping into roofs, leans into a
-// drive with a speed FOV kick and a look-ahead, and aims the gun.
+// The player: a courier in a teal shirt. On foot they walk and sprint with
+// swinging arms, turn with the camera, and collide with walls and cars; F
+// climbs into the nearest car — hot-wiring a stranger's ride is a crime
+// when someone sees it — and F again climbs out. The camera rides a soft
+// orbit rig that follows behind, pulls in rather than clipping through
+// roofs, and leans into a drive with a look-ahead and a speed FOV kick,
+// while also aiming the gun.
 
 import * as THREE from 'three';
 import { CITY, PLAYER } from './config.js';
@@ -36,7 +37,7 @@ export class Player {
   exitCar(world) {
     const car = this.car;
     if (!car) return;
-    // Step out on the car's left side, pushed clear of any wall there.
+    // Step out on the car's left, pushed clear of whatever wall is there.
     const sideX = Math.cos(car.heading);
     const sideZ = -Math.sin(car.heading);
     this.x = car.x + sideX * 1.8;
@@ -60,7 +61,7 @@ export class Player {
     this.#walk(dt, world, input);
   }
 
-  /** Driving: the shared stepCar physics, fed by the driving keys. */
+  /** Driving: the shared stepCar physics, driven by the driving keys. */
   #drive(dt, world, input) {
     const car = this.car;
     const throttle = input.axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp']);
@@ -72,7 +73,7 @@ export class Player {
     this.heading = car.heading;
     this.speedNow = Math.abs(car.speed);
     world.audio.engine(clamp(Math.abs(car.speed) / car.spec.maxSpeed, 0, 1));
-    // Tires protest when the handbrake is yanked at speed.
+    // The tires protest when the handbrake is pulled at speed.
     const sliding = handbrake && Math.abs(car.speed) > 8;
     world.audio.screech(sliding ? clamp(Math.abs(car.speed) / car.spec.maxSpeed, 0, 1) : 0);
     if (input.justPressed('KeyH')) world.audio.horn();
@@ -82,7 +83,7 @@ export class Player {
     }
   }
 
-  /** On foot: move relative to the camera's ground-projected facing. */
+  /** On foot: movement is relative to the camera's ground-projected facing. */
   #walk(dt, world, input) {
     world.audio.engine(null);
     world.audio.screech(0);
@@ -107,13 +108,13 @@ export class Player {
     if (moving) {
       this.x += mx * speed * dt;
       this.z += mz * speed * dt;
-      // Face the way we move — or the camera's way, while the mouse aims.
+      // Face the movement — or the camera, while the mouse is aiming.
       const want = input.mouseDown ? camYaw : Math.atan2(mx, mz);
       this.heading += clamp(angleDelta(this.heading, want), -10 * dt, 10 * dt);
       this.phase += dt * (sprint ? 11 : 8);
     }
     [this.x, this.z] = resolveCircle(this.x, this.z, PLAYER.radius, world.colliders);
-    // Cars are solid too: slide out of any we overlap.
+    // Cars are solid as well: slide out of any overlap.
     for (const car of world.cars) {
       const d = dist2d(this.x, this.z, car.x, car.z);
       const min = car.spec.len * 0.42;
@@ -122,7 +123,7 @@ export class Player {
         this.z += ((this.z - car.z) / d) * (min - d);
       }
     }
-    // The pier is walkable deck over the water; everywhere else the sand ends play.
+    // The pier is walkable deck over the water; elsewhere the sand ends play.
     const onPier = Math.abs(this.x - (-88)) < 6 && this.z > CITY.waterZ - 6;
     this.x = clamp(this.x, -256, 256);
     this.z = clamp(this.z, -256, onPier ? 336 : 300);
@@ -131,7 +132,7 @@ export class Player {
     parts.legL.rotation.x = swing;
     parts.legR.rotation.x = -swing;
     parts.armL.rotation.x = -swing * 0.8;
-    parts.armR.rotation.x = input.mouseDown ? -1.35 : swing * 0.8; // raised, aiming, while firing
+    parts.armR.rotation.x = input.mouseDown ? -1.35 : swing * 0.8; // raised to aim while firing
     const bob = moving ? Math.abs(Math.sin(this.phase)) * 0.04 : 0;
     this.mesh.position.set(this.x, groundHeightAt(this.x, this.z) + bob, this.z);
     this.mesh.rotation.y = this.heading;
@@ -164,14 +165,14 @@ export class CameraRig {
       (world.playerVehicle ? world.playerVehicle.mesh.position.y + 1.3 : groundHeightAt(world.playerPos.x, world.playerPos.z) + 1.6),
       world.playerPos.z,
     );
-    // While driving, the camera looks a little way up the road the car is
-    // actually travelling — the frame leads the car instead of chasing it.
+    // Driving, the camera looks a little way up the road the car is actually
+    // travelling: the frame leads the car instead of chasing it.
     if (driving) {
       const car = world.playerVehicle;
       target.x += Math.sin(car.heading) * car.speed * 0.16;
       target.z += Math.cos(car.heading) * car.speed * 0.16;
     }
-    // Speed opens the lens a touch: 62° at a crawl, up to ~71° flat out.
+    // Speed widens the lens a touch: 62° at a crawl, about 71° flat out.
     const speedRatio = driving ? clamp(Math.abs(world.playerVehicle.speed) / world.playerVehicle.spec.maxSpeed, 0, 1) : 0;
     const wantFov = this.baseFov + speedRatio * 9;
     if (Math.abs(this.camera.fov - wantFov) > 0.02) {
@@ -184,7 +185,7 @@ export class CameraRig {
       Math.sin(this.pitch),
       -Math.cos(this.yaw) * Math.cos(this.pitch),
     );
-    // If the full orbit distance lands inside a building, pull the camera in.
+    // Should the full orbit distance land inside a building, pull in.
     let used = wantDist;
     for (const scale of [1, 0.62, 0.35]) {
       used = wantDist * scale;
@@ -195,7 +196,7 @@ export class CameraRig {
     }
     const pos = target.clone().addScaledVector(back, used);
     pos.y = Math.max(pos.y, groundHeightAt(pos.x, pos.z) + 0.55);
-    const k = dt <= 0 ? 0 : Math.min(1, 1 - Math.pow(0.0001, dt)); // fast, smooth follow
+    const k = dt <= 0 ? 0 : Math.min(1, 1 - Math.pow(0.0001, dt)); // a fast, smooth follow
     this.camera.position.lerp(pos, world.snapCamera ? 1 : k);
     world.snapCamera = false;
     if (this.shakeTime > 0) {

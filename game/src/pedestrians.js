@@ -1,7 +1,8 @@
-// Pedestrians: low-poly people who stroll the sidewalk loops block by block,
-// cross the street at corners, wave for taxis, and run when the city turns
-// dangerous near them. A person is a handful of boxes — some in sun hats,
-// some in caps — and the walk is a swing of the legs and arms plus a bob.
+// Pedestrians: low-poly people strolling the sidewalk loops block by
+// block, crossing streets at corners, waving for taxis, and running when
+// the city turns dangerous around them. A person is a handful of boxes —
+// some in wide sun hats, some in flat caps — and the walk is a swing of
+// the legs and arms plus a gentle bob.
 
 import * as THREE from 'three';
 import { blockCentres } from './config.js';
@@ -13,7 +14,7 @@ const SHIRTS = [0xe8836b, 0x63b3a6, 0xf2c14e, 0xf7f3ea, 0xd96c85, 0x7fb2d9, 0x9b
 const PANTS = [0x39434f, 0x5b4a3f, 0x2f4858, 0x746a5a, 0x864343];
 const HATS = [0xf2e3c6, 0xe4572e, 0x2a9d8f, 0xf7f3ea, 0x39434f];
 
-/** Build one person. `fixed` pins any of skin/shirt/pants instead of rolling for them. */
+/** Build one person. `fixed` pins any of skin/shirt/pants instead of rolling. */
 export function makePerson(rng, fixed = null) {
   const g = new THREE.Group();
   const skin = fixed?.skin ?? rng.pick(SKIN);
@@ -21,7 +22,7 @@ export function makePerson(rng, fixed = null) {
   const pants = fixed?.pants ?? rng.pick(PANTS);
   const mat = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 });
 
-  // Legs pivot at the hip: the geometry is translated so rotation swings them.
+  // Legs pivot at the hip: translate the geometry so rotation swings them.
   const legGeo = new THREE.BoxGeometry(0.16, 0.78, 0.18);
   legGeo.translate(0, -0.39, 0);
   const legL = new THREE.Mesh(legGeo, mat(pants));
@@ -45,8 +46,8 @@ export function makePerson(rng, fixed = null) {
   head.castShadow = true;
   g.add(legL, legR, torso, armL, armR, head);
 
-  // About half the city wears something against the sun: a wide-brimmed hat
-  // or a flat cap, in a colour that argues with the shirt.
+  // Roughly half the city wears something against the sun: a wide-brimmed
+  // hat or a flat cap, in a colour that argues with the shirt.
   const hatRoll = fixed?.hat ?? rng.next();
   if (hatRoll < 0.3) {
     const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.04, 10), mat(rng.pick(HATS)));
@@ -66,7 +67,7 @@ export function makePerson(rng, fixed = null) {
 }
 
 const CENTRES = blockCentres();
-const LOOP = 15.5; // sidewalk loop offset from a block centre
+const LOOP = 15.5; // the sidewalk loop's offset from a block centre
 
 export class Pedestrian {
   constructor(scene, rng, player = false) {
@@ -90,7 +91,7 @@ export class Pedestrian {
     this.#placeAtCorner();
   }
 
-  /** The sidewalk position of this pedestrian's current corner of their block. */
+  /** Where this pedestrian's current corner of their block sits. */
   #cornerPos() {
     const cx = CENTRES[this.block];
     const cz = CENTRES[this.blockZ];
@@ -106,11 +107,11 @@ export class Pedestrian {
     this.target = null;
   }
 
-  /** Next waypoint: on around the block loop, or across the street at a corner. */
+  /** The next waypoint: around the block loop, or across at a corner. */
   #nextTarget() {
     if (this.target) return this.target;
     if (this.rng.next() < 0.22) {
-      // Cross to the neighbouring block in the direction this corner faces.
+      // Cross into the neighbouring block the way this corner faces.
       const east = this.corner === 1 || this.corner === 2;
       const south = this.corner >= 2;
       if (this.rng.chance(0.5)) {
@@ -128,7 +129,7 @@ export class Pedestrian {
     return this.target;
   }
 
-  /** Something frightening happened nearby: run from it for a few seconds. */
+  /** Something frightening happened nearby: flee it for a few seconds. */
   scare(x, z, radius = 26) {
     if (this.state !== 'walk') return;
     if (dist2d(this.x, this.z, x, z) < radius) {
@@ -148,8 +149,8 @@ export class Pedestrian {
   update(dt, world) {
     const parts = this.mesh.userData.parts;
     if (this.state === 'down') {
-      // Stay down until the timer runs out and the player is far away, then
-      // quietly respawn at a fresh corner.
+      // Stay down until the timer runs out with the player far away, then
+      // respawn quietly at a fresh corner.
       this.downTime -= dt;
       this.mesh.position.set(this.x, groundHeightAt(this.x, this.z) + 0.18, this.z);
       if (this.downTime <= 0 && dist2d(this.x, this.z, world.playerPos.x, world.playerPos.z) > 60) {
@@ -165,14 +166,14 @@ export class Pedestrian {
     if (this.state === 'riding') { this.mesh.visible = false; return; }
     this.mesh.visible = true;
     if (this.state === 'waiting') {
-      // Taxi hailer: stand at the kerb and wave.
+      // Taxi hailer: stand at the kerb and wave an arm.
       parts.armR.rotation.x = Math.PI * 0.85 + Math.sin(performance.now() * 0.012) * 0.25;
       this.#stand();
       return;
     }
     parts.armR.rotation.x = Math.sin(this.phase) * 0.5;
 
-    // Work out where this state is heading, and how fast.
+    // Settle where this state is heading, and how fast it gets there.
     let speed = this.walkSpeed;
     let tx;
     let tz;
@@ -215,7 +216,7 @@ export class Pedestrian {
     this.mesh.rotation.y = this.heading;
   }
 
-  /** Park the mesh at the current spot, upright and facing the heading. */
+  /** Park the mesh where it stands, upright and facing the heading. */
   #stand() {
     this.mesh.position.set(this.x, groundHeightAt(this.x, this.z), this.z);
     this.mesh.rotation.y = this.heading;

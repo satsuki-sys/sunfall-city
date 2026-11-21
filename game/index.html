@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sunfall City — an open-world crime game</title>
 <style>
-  /* ---------- Page and canvas ---------- */
+  /* Page frame: the canvas fills the window and never scrolls. */
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1c1410; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
   #app, #app canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 
-  /* ---------- HUD: readouts layered over the canvas ---------- */
+  /* HUD layer: every readout floats over the canvas, clicks pass through. */
   #hud { display: none; position: fixed; inset: 0; pointer-events: none; color: #fff7e8; }
   #stats { position: absolute; top: 16px; left: 18px; text-shadow: 0 1px 3px rgba(0,0,0,.55); }
   #health-wrap { width: 210px; height: 13px; background: rgba(10,14,18,.55); border: 1px solid rgba(255,247,232,.5); border-radius: 7px; overflow: hidden; }
@@ -41,7 +41,7 @@
   #vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 52%, rgba(200,30,20,.55) 100%); opacity: 0; }
   #hint { position: absolute; left: 18px; bottom: 16px; font-size: 12.5px; line-height: 1.5; color: rgba(255,247,232,.75); text-shadow: 0 1px 3px rgba(0,0,0,.7); }
 
-  /* ---------- Full-screen menus: title, pause, end ---------- */
+  /* Menus: title, pause and the end screen share one centred layout. */
   .screen { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; text-align: center; color: #fff7e8; z-index: 5; }
   #title-screen { background: linear-gradient(180deg, rgba(38,20,8,.18) 0%, rgba(38,20,8,.42) 62%, rgba(20,10,6,.78) 100%); }
   .screen h1 { font-family: Georgia, "Times New Roman", serif; font-size: 76px; margin: 0; letter-spacing: 7px; color: #fff3d6; text-shadow: 0 4px 26px rgba(120,40,0,.65), 0 2px 3px rgba(0,0,0,.5); }
@@ -58,10 +58,10 @@
 </style>
 </head>
 <body>
-<!-- The WebGL canvas mounts here. -->
+<!-- Mount point for the WebGL canvas. -->
 <div id="app"></div>
 
-<!-- In-game overlay: health, cash, discs, stars, objective, banners, minimap. -->
+<!-- HUD overlay: health, cash, disc tally, wanted stars, objective, banners, minimap. -->
 <div id="hud">
   <div id="vignette"></div>
   <div id="stats">
@@ -86,7 +86,7 @@
   <div id="hint">WASD move · mouse look · F car · click shoot<br>Shift sprint · Space handbrake · P pause</div>
 </div>
 
-<!-- Title screen. -->
+<!-- Title screen: shown first, and again after SAVE & TITLE. -->
 <div id="title-screen" class="screen">
   <h1>SUNFALL CITY</h1>
   <p class="tagline">ONE COURIER. ONE COAST. EVERY SUNSET FOR SALE.</p>
@@ -98,7 +98,7 @@
   </div>
 </div>
 
-<!-- Pause screen: tally, the full controls list, and the way back in. -->
+<!-- Pause screen: the run tally, the complete controls list, the way back in. -->
 <div id="pause-screen" class="screen">
   <h2>PAUSED</h2>
   <p class="tagline">The city waits. It is good at that.</p>
@@ -112,7 +112,7 @@
   </div>
 </div>
 
-<!-- Downed / busted screen; main.js fills in the heading and the fine print. -->
+<!-- End screen for downed and busted runs; src/main.js fills heading and fine print. -->
 <div id="end-screen" class="screen">
   <h2 id="end-title">DOWNED</h2>
   <p class="fine" id="end-text"></p>

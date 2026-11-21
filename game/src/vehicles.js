@@ -1,8 +1,8 @@
-// Cars: low-poly box-built vehicles — sedans, sports cars, taxis, trucks and
-// police interceptors — plus the arcade physics every driver shares. Player,
-// traffic and police all steer through stepCar, so a chase feels fair. At
-// dusk every car wears halo sprites on its lamps, and the tail lights flare
-// when the driver brakes.
+// Cars: low-poly, box-built vehicles — sedans, sports cars, taxis, trucks
+// and police interceptors — plus the arcade physics every driver shares.
+// Player, traffic and police all steer through stepCar, which is what
+// keeps a chase fair. At dusk every car wears halo sprites on its lamps,
+// and the tail lights flare whenever the driver brakes.
 
 import * as THREE from 'three';
 import { CAR_TYPES } from './config.js';
@@ -10,7 +10,7 @@ import { clamp } from './random.js';
 import { groundHeightAt, glowTexture } from './city.js';
 
 let sharedGlowTex = null;
-/** The radial glow texture, built once and shared by every lamp sprite. */
+/** The radial glow texture, built once and shared by all lamp sprites. */
 function glowTex() {
   if (!sharedGlowTex) sharedGlowTex = glowTexture();
   return sharedGlowTex;
@@ -27,7 +27,7 @@ function lampGlow(color, size, opacity) {
   return sprite;
 }
 
-/** One shadow-casting box with a standard material; the only mesh maker here. */
+/** One shadow-casting box in a standard material; the only mesh maker here. */
 function box(w, h, d, color, opts = {}) {
   const mat = new THREE.MeshStandardMaterial({
     color,
@@ -41,7 +41,7 @@ function box(w, h, d, color, opts = {}) {
   return mesh;
 }
 
-/** Build a car mesh facing +z. Police cars carry a flashable light bar. */
+/** Build a car mesh facing +z. Police cars get a flashable light bar. */
 export function makeCarMesh(type, color) {
   const spec = CAR_TYPES[type];
   const g = new THREE.Group();
@@ -83,7 +83,7 @@ export function makeCarMesh(type, color) {
     bar.position.set(0, 1.45, -spec.len * 0.04);
     g.add(bar);
     g.userData.flash = [red.material, blue.material];
-    // Halos above the bar, pulsed by the police driver in step with the strobe.
+    // Halos over the bar, pulsed by the police driver in time with the strobe.
     const redGlow = lampGlow(0xff5040, 1.7, 0.5);
     redGlow.position.set(-0.28, 1.5, -spec.len * 0.04);
     const blueGlow = lampGlow(0x4d8dff, 1.7, 0.06);
@@ -92,7 +92,7 @@ export function makeCarMesh(type, color) {
     g.userData.flashGlow = [redGlow.material, blueGlow.material];
   }
 
-  // Headlights and tail lights, each with a soft halo at dusk.
+  // Headlights and tail lights, each carrying a soft halo for the dusk.
   const headlights = box(spec.wid * 0.7, 0.12, 0.05, 0xfff6c9, { emissive: 0xffeeb0, ei: 1.4 });
   headlights.position.set(0, 0.68, spec.len / 2 + 0.01);
   g.add(headlights);
@@ -105,11 +105,11 @@ export function makeCarMesh(type, color) {
   const tailGlow = lampGlow(0xff4030, 0.85, 0.3);
   tailGlow.position.set(0, 0.7, -spec.len / 2 - 0.26);
   g.add(tailGlow);
-  // stepCar flares these two when the driver brakes.
+  // stepCar flares these two while the driver is on the brake.
   g.userData.tailGlow = tailGlow.material;
   g.userData.tailMat = tailLights.material;
 
-  // Wheels share one geometry and material; the front pair also steers.
+  // One shared wheel geometry and material; the front pair also steers.
   const wheelGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.24, 10);
   wheelGeo.rotateZ(Math.PI / 2);
   const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1c1f24, roughness: 0.9 });
@@ -138,7 +138,7 @@ export function createCar(scene, type, color, x, z, heading) {
     health: spec.health,
     maxHealth: spec.health,
     driver: null,        // 'player' | 'traffic' | 'police' | 'parked'
-    lastImpact: 0,       // speed lost to a wall this step (the world reads it)
+    lastImpact: 0,       // speed a wall ate this step (the world reads it)
     honkCooldown: 0,
     dead: false,
   };
@@ -146,7 +146,7 @@ export function createCar(scene, type, color, x, z, heading) {
 
 export const carForward = (car) => ({ x: Math.sin(car.heading), z: Math.cos(car.heading) });
 
-/** Push a circle at (x, z) out of every building AABB; returns corrected [x, z]. */
+/** Push a circle at (x, z) out of every building AABB; returns [x, z]. */
 export function resolveCircle(x, z, r, colliders) {
   for (const c of colliders) {
     const nx = clamp(x, c.minX, c.maxX);
@@ -160,7 +160,7 @@ export function resolveCircle(x, z, r, colliders) {
       x = nx + (dx / d) * r;
       z = nz + (dz / d) * r;
     } else {
-      // Centre inside the box: leave by the shallowest face.
+      // The centre sits inside the box: leave by the shallowest face.
       const left = x - c.minX;
       const right = c.maxX - x;
       const top = z - c.minZ;
@@ -176,24 +176,24 @@ export function resolveCircle(x, z, r, colliders) {
 }
 
 /**
- * Advance one car. control: {throttle -1..1, steer -1..1, brake bool}.
- * Collisions are circles at the nose and tail against buildings, and a soft
- * push against other cars. Sets car.lastImpact when a wall eats speed, and
- * flares the tail lights while the brake is on.
+ * Advance one car by a step. control: {throttle -1..1, steer -1..1, brake}.
+ * Collisions are circles at the nose and tail against buildings, plus a
+ * soft push against other cars. Sets car.lastImpact when a wall eats
+ * speed, and flares the tail lights for as long as the brake is held.
  */
 export function stepCar(car, control, dt, colliders, cars) {
   const spec = car.spec;
   car.lastImpact = 0;
   const before = Math.abs(car.speed);
 
-  // Brake lights: bright under braking or reverse, dim while cruising.
+  // Brake lights: bright while braking or reversing, dim at a cruise.
   const braking = control.brake || control.throttle < 0;
   if (car.mesh.userData.tailGlow) {
     car.mesh.userData.tailGlow.opacity = braking ? 0.75 : 0.3;
     car.mesh.userData.tailMat.emissiveIntensity = braking ? 2.1 : 0.8;
   }
 
-  // --- Speed: engine, brake, drag -------------------------------------------
+  // Speed: engine, brake and drag.
   if (car.health <= 0) {
     car.speed *= Math.max(0, 1 - 2.5 * dt);
   } else if (control.brake && Math.abs(car.speed) > 0.5) {
@@ -208,15 +208,15 @@ export function stepCar(car, control, dt, colliders, cars) {
   if (Math.abs(car.speed) < 0.04 && control.throttle === 0) car.speed = 0;
   car.speed = clamp(car.speed, -11, spec.maxSpeed);
 
-  // --- Heading and position ---------------------------------------------------
-  // control.steer > 0 turns left (heading grows toward the east of south).
+  // Heading and position. control.steer > 0 turns left: the heading grows
+  // toward the east of south.
   const steerAuthority = clamp(Math.abs(car.speed) / 7, 0, 1) * Math.sign(car.speed);
   car.heading += control.steer * 1.65 * steerAuthority * dt;
   const f = carForward(car);
   car.x += f.x * car.speed * dt;
   car.z += f.z * car.speed * dt;
 
-  // --- Buildings: collision circles at the nose and the tail ------------------
+  // Buildings: collision circles riding at the nose and the tail.
   const r = spec.wid * 0.58;
   for (const s of [0.32, -0.32]) {
     const cx = car.x + f.x * spec.len * s;
@@ -233,7 +233,7 @@ export function stepCar(car, control, dt, colliders, cars) {
     }
   }
 
-  // --- Other cars: a soft push apart, with damage for the faster one ----------
+  // Other cars: a soft push apart, with damage charged to the faster one.
   for (const other of cars) {
     if (other === car) continue;
     const dx = car.x - other.x;
@@ -251,7 +251,7 @@ export function stepCar(car, control, dt, colliders, cars) {
     }
   }
 
-  // --- Pose the mesh ------------------------------------------------------------
+  // Pose the mesh on the ground, wheels spinning and steering.
   car.x = clamp(car.x, -258, 258);
   car.z = clamp(car.z, -258, 262);
   car.mesh.position.set(car.x, groundHeightAt(car.x, car.z), car.z);

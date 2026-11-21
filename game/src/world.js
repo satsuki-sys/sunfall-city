@@ -1,7 +1,7 @@
-// The Game: owns the renderer, the city, every actor and the rules that bind
-// them — crime and wanted, damage and death, busts, effects, the camera and
-// the HUD. main.js drives the screens; shots.js stages scenes for the camera;
-// everything else lives here.
+// The Game: owns the renderer, the city, every actor, and the rules that
+// bind them — crime and wanted, damage and death, busts, effects, the
+// camera and the HUD. main.js drives the screens; shots.js stages scenes
+// for the camera; everything else lives here.
 
 import * as THREE from 'three';
 import { PACKAGES, PALETTE, WANTED } from './config.js';
@@ -20,10 +20,10 @@ import { SoundBank } from './audio.js';
 import { Input } from './input.js';
 import { loadSave, writeSave } from './save.js';
 
-/** Stars each crime is worth when it is witnessed. */
+/** The stars each crime is worth when somebody witnesses it. */
 const CRIME_STARS = { shot: 1, theft: 1, hitCar: 1, grandTheft: 2, hitPed: 2, score: 2, hitPolice: 3 };
 
-/** Seconds of standing still beside an officer that ends in an arrest. */
+/** Seconds of standing still beside an officer that end in an arrest. */
 const BUST_SECONDS = 2.5;
 
 export class Game {
@@ -35,7 +35,7 @@ export class Game {
     this.time = 0;
     this.snapCamera = true;
 
-    // --- Renderer, scene, camera ----------------------------------------------
+    // --- Renderer, scene, camera ---------------------------------------------
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(this.shotMode ? 1 : Math.min(devicePixelRatio, 1.75));
     this.renderer.setSize(innerWidth, innerHeight);
@@ -49,7 +49,7 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 1600);
     this.camera.position.set(-140, 8, -130);
 
-    // --- Light: a warm hemisphere wash and the low golden-hour sun --------------
+    // --- Light: a warm hemisphere wash and the low golden-hour sun ------------
     const hemi = new THREE.HemisphereLight(0xffd9a8, 0x7a5c48, 0.95);
     this.scene.add(hemi);
     this.sun = new THREE.DirectionalLight(0xffdf9e, 1.75);
@@ -63,7 +63,7 @@ export class Game {
     this.sun.shadow.bias = -0.0006;
     this.scene.add(this.sun, this.sun.target);
 
-    // --- The city and the player's instruments ----------------------------------
+    // --- The city and the player's instruments --------------------------------
     const city = buildCity(this.scene, makeRng(4242));
     this.city = city;
     this.colliders = city.colliders;
@@ -74,7 +74,7 @@ export class Game {
     this.minimap = new Minimap(document.getElementById('minimap'));
     this.cameraRig = new CameraRig(this.camera);
 
-    // --- Actors and game state ----------------------------------------------------
+    // --- Actors and game state --------------------------------------------------
     this.player = new Player(this.scene, this.rng);
     this.cars = [];
     this.peds = [];
@@ -135,7 +135,7 @@ export class Game {
       this.cars.push(car);
     }
 
-    // Moving traffic, spawned well away from the player's start.
+    // Moving traffic, spawned well clear of the player's start.
     const trafficColors = [0xf2e3c6, 0xe8836b, 0x63b3a6, 0x7fb2d9, 0xf7f3ea];
     for (let i = 0; i < 13; i += 1) {
       let x = 0;
@@ -158,7 +158,7 @@ export class Game {
 
   shake(t) { this.cameraRig.shake(t); }
 
-  /** A traffic honk is audible only when it happens near the player. */
+  /** A traffic honk carries only when it happens near the player. */
   onHonk(car) {
     if (dist2d(car.x, car.z, this.playerPos.x, this.playerPos.z) < 32) this.audio.horn();
   }
@@ -209,7 +209,7 @@ export class Game {
   }
 
   damagePlayer(amount, source) {
-    void source; // the caller is not needed yet; the signature keeps call sites honest
+    void source; // call sites pass it for honesty; nothing needs it yet
     if (this.state !== 'playing' || this.shotMode) return;
     this.health -= amount;
     this.lastDamageAt = this.time;
@@ -222,7 +222,7 @@ export class Game {
     }
   }
 
-  /** Respawn after a downed/busted screen: outside the hospital, or the station. */
+  /** Respawn from the end screen: outside the hospital, or the station. */
   respawn(kind) {
     this.wanted = 0;
     this.bustMeter = 0;
@@ -243,7 +243,7 @@ export class Game {
     this.saveGame();
   }
 
-  /** A tracer: a bright line between two points, gone in a blink. */
+  /** A tracer: one bright line between two points, gone in a blink. */
   spawnTracer(a, b, color) {
     const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
     const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
@@ -252,7 +252,7 @@ export class Game {
     this.effects.push({ obj: line, life: 0.07, max: 0.07, kind: 'tracer' });
   }
 
-  /** A puff: a few soft spheres that drift, grow and fade. */
+  /** A puff: a few soft spheres that drift, swell and fade. */
   spawnPuff(pos, color, count = 3, power = 1) {
     for (let i = 0; i < count; i += 1) {
       const mesh = new THREE.Mesh(PuffGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, depthWrite: false }));
@@ -301,7 +301,7 @@ export class Game {
 
   #updateCrimesAndConsequences(dt) {
     // Wanted decay: the clock runs only while no fresh crime lands and no
-    // officer is close enough to keep the heat on.
+    // officer is near enough to keep the heat on.
     if (this.wanted > 0) {
       if (this.police.nearestDistance(this.playerPos) < 26) this.crimeTimer = Math.max(this.crimeTimer, 2);
       this.crimeTimer -= dt;
@@ -315,14 +315,14 @@ export class Game {
     this.impactCooldown = Math.max(0, this.impactCooldown - dt);
     const car = this.playerVehicle;
     if (car) {
-      // A hard wall impact in a car is itself a crime — and it thuds.
+      // A hard wall impact while driving is itself a crime — and it thuds.
       if (car.lastImpact > 10 && this.impactCooldown <= 0) {
         this.reportCrime('hitCar', this.playerPos);
         this.impactCooldown = 2;
         this.shake(0.3);
         this.audio.bump();
       }
-      // Running someone down is the loudest crime there is.
+      // Running someone down is the loudest crime of all.
       if (Math.abs(car.speed) > 4) {
         for (const ped of this.peds) {
           if (ped.state === 'down' || ped.state === 'riding' || ped.state === 'waiting') continue;
@@ -337,8 +337,8 @@ export class Game {
       }
     }
 
-    // Bust: an officer on foot beside a slow, wanted player fills the meter —
-    // and the HUD now shows it filling, so the danger is readable.
+    // The bust: an officer on foot beside a slow, wanted player fills the
+    // meter — and the HUD shows it filling, so the danger stays readable.
     if (!car && this.wanted > 0 && this.player.speedNow < 1) {
       const near = this.police.nearestDistance(this.playerPos);
       if (near < 4.6) {
@@ -350,13 +350,13 @@ export class Game {
       } else this.bustMeter = Math.max(0, this.bustMeter - dt * 2);
     } else this.bustMeter = Math.max(0, this.bustMeter - dt * 2);
 
-    // Health returns once the shooting stops.
+    // Health creeps back once the shooting has stopped.
     if (this.time - this.lastDamageAt > 6 && this.health > 0) {
       this.health = Math.min(100, this.health + 4.5 * dt);
     }
   }
 
-  /** The F-key prompt: get out of the current car, or into the nearest one. */
+  /** The F-key prompt: out of the current car, or into the nearest one. */
   #updateInteraction() {
     const input = this.input;
     if (this.player.car) {
@@ -391,7 +391,7 @@ export class Game {
     if (playing) {
       this.player.update(dt, this);
       this.#updateInteraction();
-      // Shooting: on foot, mouse held, and never while a screenshot is staged.
+      // Shooting: on foot, mouse held, never while a screenshot is staged.
       if (this.input.mouseDown && !this.player.car && !this.shotMode) {
         const origin = new THREE.Vector3(this.player.x, this.player.mesh.position.y + 1.45, this.player.z);
         this.combat.playerShoot(origin, this.cameraRig.forward);
@@ -409,7 +409,7 @@ export class Game {
     this.city.update(dt, this.time);
     this.#updateEffects(dt);
 
-    // The sun (and its shadow box) follows the player around the city.
+    // The sun, shadow box and all, follows the player around the city.
     const p = this.playerPos;
     this.sun.position.set(p.x - 120, 130, p.z + 70);
     this.sun.target.position.set(p.x, 0, p.z);

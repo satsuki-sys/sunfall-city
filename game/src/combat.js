@@ -1,7 +1,8 @@
-// Combat: the player's handgun — hitscan along the camera's aim, with a tracer
-// and a dust puff where the round lands — and the armed guards who shoot back
-// during the story. Every shot is a crime the city can hear, and every hit
-// lands somewhere specific: a pedestrian, a guard, a car or a wall.
+// Combat: the player's handgun — hitscan down the camera's aim, with a
+// tracer and a dust puff wherever the round lands — and the armed guards
+// who shoot back during the story. Each shot is a crime the city can hear,
+// and each hit lands somewhere specific: a pedestrian, a guard, a car, or
+// a wall.
 
 import * as THREE from 'three';
 import { dist2d } from './random.js';
@@ -24,7 +25,7 @@ export class Guard {
     this.z = z;
     this.heading = heading;
     this.health = 60;
-    this.active = false;   // set when the story stage arms him
+    this.active = false;   // the story stage that needs him sets this
     this.dead = false;
     this.cooldown = 1.2;
   }
@@ -53,14 +54,14 @@ export class Guard {
       const to = new THREE.Vector3(p.x, (world.playerVehicle ? 0.9 : 1.1) + baseY, p.z);
       world.spawnTracer(from, to, 0xffa04d);
       world.audio.shot();
-      // Accuracy falls off with range, and a moving car is harder to hit.
+      // Range degrades his aim, and a moving car is harder to hit still.
       const hitChance = Math.max(0.12, 0.62 - d * 0.014 - (world.playerVehicle ? 0.18 : 0));
       if (world.rng.next() < hitChance) world.damagePlayer(world.rng.range(4, 9), this);
     }
   }
 }
 
-/** Ray against sphere; returns the distance along the ray, or Infinity on a miss. */
+/** Ray against sphere: the distance along the ray, or Infinity on a miss. */
 function raySphere(origin, dir, centre, radius) {
   const ox = centre.x - origin.x;
   const oy = centre.y - origin.y;
@@ -82,7 +83,7 @@ export class Combat {
     this.cooldown = Math.max(0, this.cooldown - dt);
   }
 
-  /** Fire once toward the camera aim. Returns true if a shot went off. */
+  /** Fire one shot toward the camera's aim. True if a shot went off. */
   playerShoot(origin, dir) {
     const world = this.world;
     if (this.cooldown > 0) return false;
@@ -90,7 +91,8 @@ export class Combat {
     world.audio.shot();
     world.reportCrime('shot', world.playerPos);
 
-    // Find the nearest thing the ray touches: peds, guards, cars, buildings.
+    // Walk every candidate and keep the nearest thing the ray touches:
+    // pedestrians, guards, cars, and buildings in that scan order.
     let bestT = 90;
     let hit = null;
     const consider = (t, what) => { if (t < bestT) { bestT = t; hit = what; } };
@@ -109,14 +111,14 @@ export class Combat {
       consider(raySphere(origin, dir, centre, car.spec.len * 0.52), { kind: 'car', car });
     }
     for (const box of world.colliders) {
-      // Cheap building stop: test the ray against a sphere at the AABB's centre.
+      // Cheap building stop: a sphere parked at the AABB's centre.
       const cx = (box.minX + box.maxX) / 2;
       const cz = (box.minZ + box.maxZ) / 2;
       const r = Math.max(box.maxX - box.minX, box.maxZ - box.minZ) / 2;
       consider(raySphere(origin, dir, new THREE.Vector3(cx, 6, cz), r), { kind: 'wall' });
     }
 
-    // Draw the tracer and a bright impact flash whether or not anything was hit.
+    // Tracer and a bright impact flash, hit or miss.
     const end = origin.clone().addScaledVector(dir, bestT);
     const muzzle = origin.clone().addScaledVector(dir, 0.7);
     muzzle.y -= 0.12;

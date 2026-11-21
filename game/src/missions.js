@@ -1,8 +1,8 @@
-// Missions: a three-job story for Rook, a courier who owes the city a favour,
-// the repeatable Taxi Dash on the side, and a trail of twelve golden sun
-// discs hidden around the city for anyone who explores. Marisol at Café
-// Solano hands out the work by phone banner; a gold beacon marks the way,
-// and the minimap target follows it.
+// Missions: a three-job story for Rook, a courier who owes the city a
+// favour, the repeatable Taxi Dash running on the side, and a trail of
+// twelve golden sun discs hidden around the city for anyone who explores.
+// Marisol at Café Solano hands the work out by phone banner; a gold beacon
+// marks the way, and the minimap target follows it.
 //
 //   1. First Run         — pick up a package at the café, deliver it dockside.
 //   2. Borrowed Sunshine — steal the coral Vireo GT from Shoreline Motors and
@@ -19,7 +19,7 @@ import { glowTexture } from './city.js';
 
 const CASE_POS = { x: -88, z: 330 }; // the cash case, at the end of the pier
 
-/** Where the twelve sun discs wait: pier, shore, forecourts and medians. */
+/** Where the twelve sun discs wait: the pier, the shore, forecourts, medians. */
 const DISC_SPOTS = [
   { x: -88, z: 330 },   // the end of Palms Pier, beside the cash case
   { x: -220, z: 252 },  // the boardwalk's west end
@@ -38,13 +38,13 @@ const DISC_SPOTS = [
 export class Missions {
   constructor(world) {
     this.world = world;
-    this.storyIndex = 0;      // 0,1,2 = the three jobs; 3 = story done
+    this.storyIndex = 0;      // 0, 1, 2 = the three jobs; 3 = story done
     this.stage = 'toCafe';
     this.target = null;       // {x, z, color} for the minimap
     this.taxi = { phase: 'none', ped: null, dest: null, timer: 0, offerIn: 14 };
     this.lastObjective = '';
 
-    // The objective beacon: a translucent gold column at the target.
+    // The objective beacon: a translucent gold column standing on the target.
     const beaconMat = new THREE.MeshBasicMaterial({
       color: 0xffd23e, transparent: true, opacity: 0.26, depthWrite: false, side: THREE.DoubleSide,
     });
@@ -53,8 +53,8 @@ export class Missions {
     this.beacon.visible = false;
     world.scene.add(this.beacon);
 
-    // The cash case waits at the end of the pier from the very start, with
-    // its guard posted nearby (inactive until the story arms him).
+    // The cash case sits at the end of the pier from the very beginning,
+    // its guard posted nearby — inactive until the story arms him.
     const caseMesh = new THREE.Mesh(
       new THREE.BoxGeometry(0.7, 0.3, 0.5),
       new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.35, metalness: 0.7, emissive: 0x664d00, emissiveIntensity: 0.4 }),
@@ -66,7 +66,7 @@ export class Missions {
     world.guards.push(this.guard);
 
     // The sun discs: flat gold coins hovering over their spots, each with a
-    // halo so a sharp eye can spot one down an avenue.
+    // halo so a sharp eye can pick one out from down an avenue.
     this.discs = DISC_SPOTS.map((spot) => {
       const group = new THREE.Group();
       const coin = new THREE.Mesh(
@@ -97,7 +97,7 @@ export class Missions {
     return this.discs.filter((d) => d.taken).length;
   }
 
-  /** Restore story progress from a save: jump straight to that job's first stage. */
+  /** Restore story progress from a save: land on that job's opening stage. */
   restore(index) {
     this.storyIndex = Math.min(3, index);
     this.stage = ['toCafe', 'toLot', 'toPier', 'free'][this.storyIndex];
@@ -131,7 +131,7 @@ export class Missions {
     this.beacon.visible = false;
   }
 
-  /** Push an objective to the HUD, throttled so the text only changes when it should. */
+  /** Push an objective to the HUD, throttled so text changes only when it should. */
   #objective(title, text, dist) {
     const key = `${title}|${text}|${dist === null ? '' : Math.round(dist / 5)}`;
     if (key === this.lastObjective) return;
@@ -144,17 +144,17 @@ export class Missions {
     return dist2d(p.x, p.z, x, z) < r;
   }
 
-  /** Distance from the player to a point, for objective readouts. */
+  /** The player's distance to a point, for objective readouts. */
   #distTo(x, z) {
     const p = this.world.playerPos;
     return dist2d(p.x, p.z, x, z);
   }
 
   update(dt, t) {
-    // The beacon breathes and slowly turns, playing or not.
+    // Playing or not, the beacon breathes and slowly turns.
     this.beacon.material.opacity = 0.2 + Math.sin(t * 3) * 0.07;
     this.beacon.rotation.y += dt * 0.4;
-    // The discs spin and bob over their spots, waiting to be found.
+    // And the discs spin and bob over their spots, waiting to be found.
     for (const disc of this.discs) {
       if (disc.taken) continue;
       disc.mesh.rotation.y += dt * 1.6;
@@ -167,7 +167,7 @@ export class Missions {
     }
   }
 
-  /** Pick up any disc the player has just walked or driven over. */
+  /** Pick up any disc the player has just walked or driven across. */
   #updateDiscs() {
     const world = this.world;
     const p = world.playerPos;
@@ -293,7 +293,7 @@ export class Missions {
         break;
       }
       default: {
-        // Story finished: with no taxi running either, there is no objective.
+        // Story finished: with no taxi fare running either, no objective.
         if (this.taxi.phase === 'none') {
           this.#clearTarget();
           hud.clearObjective();
@@ -302,7 +302,7 @@ export class Missions {
     }
   }
 
-  // --- Taxi Dash: the repeatable side job -------------------------------------
+  // --- Taxi Dash: the repeatable side job ------------------------------------
 
   #updateTaxi(dt) {
     const world = this.world;
@@ -310,7 +310,7 @@ export class Missions {
     if (this.storyIndex < 1) return; // no fares until the first job is done
 
     if (taxi.phase === 'none') {
-      // Count down to the next hail; then find a walker to raise a hand.
+      // Count down to the next hail, then find a walker to raise a hand.
       taxi.offerIn -= dt;
       if (taxi.offerIn <= 0) {
         const ped = world.peds.find((p) => p.state === 'walk' && dist2d(p.x, p.z, world.playerPos.x, world.playerPos.z) > 25);
@@ -325,7 +325,7 @@ export class Missions {
     }
 
     if (taxi.phase === 'offer') {
-      // While a story job is running it keeps the marker; the hail just waits.
+      // A running story job keeps the marker; the hail simply waits its turn.
       if (this.stage === 'free') {
         this.#setTarget(taxi.ped.x, taxi.ped.z, '#7be382');
         this.#objective('TAXI DASH', 'Pick up the passenger', this.#distTo(taxi.ped.x, taxi.ped.z));
@@ -375,7 +375,7 @@ export class Missions {
     }
   }
 
-  /** A passenger reached the car: choose their destination and start the ride. */
+  /** A passenger reached the car: choose the destination and start the ride. */
   #pedArrived(ped) {
     const taxi = this.taxi;
     if (taxi.phase !== 'pickup' || taxi.ped !== ped) return;
@@ -388,7 +388,7 @@ export class Missions {
     this.world.hud.message(`Passenger: "Take me to ${poi.name} — step on it."`, '#9fe8a9');
   }
 
-  /** Abandon the current hail or fare, and schedule the next one. */
+  /** Give up the current hail or fare, and schedule the next one. */
   #dropTaxi(stranded = false) {
     const taxi = this.taxi;
     if (taxi.ped) {

@@ -1,8 +1,9 @@
 // Screenshot staging, behind ?shot=cover|drive|chase|mission. Each scene is
-// posed from the same seeded world, then the real simulation is stepped for a
-// couple of seconds at a small render size (so headless staging stays fast)
-// before the frame is restored to full size, rendered once and flagged ready.
-// The screenshots are the game's own renders — nothing is composited.
+// posed inside the same seeded world, then the real simulation is stepped
+// for a couple of seconds at a small render size — headless staging stays
+// fast that way — before the frame is restored to full size, rendered once
+// and flagged ready. The screenshots are the game's own renders; nothing
+// is composited into them.
 
 import { POIS } from './city.js';
 import { createCar } from './vehicles.js';
@@ -85,8 +86,8 @@ export function stageShot(game, name) {
       game.cars.push(unit);
       game.police.units.push(unit);
     }
-    // The camera looks back down the avenue: the player's car in front, the
-    // law behind it.
+    // The camera looks back down the avenue: the player's car up front and
+    // the law rolling in behind it.
     rig.yaw = Math.PI / 2 - 0.3;
     rig.pitch = 0.3;
     rig.dist = 11;
@@ -102,7 +103,7 @@ export function stageShot(game, name) {
     step(game, 2);
   } else {
     // cover: on foot at the café corner, looking south-east down the avenue
-    // toward the boardwalk and the sea, with traffic rolling through — and a
+    // toward the boardwalk and the sea with traffic rolling through — and a
     // sun disc glinting on the café corner behind the player's shoulder.
     placePlayer(game, -112, -102, 0.62);
     const traffic = game.cars.find((c) => c.traffic);
@@ -128,7 +129,7 @@ export function stageShot(game, name) {
     step(game, 2.4);
   }
 
-  // Back to full size, settle the camera, and flag the finished frame.
+  // Return to full size, settle the camera, flag the finished frame.
   restore(game);
   game.snapCamera = true;
   game.update(1 / 30);

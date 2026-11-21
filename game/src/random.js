@@ -1,7 +1,7 @@
-// A small seeded random generator (mulberry32) and the numeric helpers the
+// A seeded random generator (mulberry32) plus the small numeric helpers the
 // rest of the game shares. City generation and the staged screenshot scenes
-// draw from fixed seeds, so every visit — and every screenshot — sees the
-// same Sunfall City.
+// both draw from fixed seeds, which is what makes every visit — and every
+// screenshot — see exactly the same Sunfall City.
 
 export function makeRng(seed) {
   let state = seed >>> 0;
@@ -14,13 +14,13 @@ export function makeRng(seed) {
   };
   return {
     next,
-    /** Float in [min, max). */
+    /** A float in [min, max). */
     range: (min, max) => min + next() * (max - min),
-    /** Integer in [min, max], both ends included. */
+    /** An integer in [min, max], inclusive at both ends. */
     int: (min, max) => Math.floor(min + next() * (max - min + 1)),
     /** True with probability p. */
     chance: (p) => next() < p,
-    /** One element of the array, chosen uniformly. */
+    /** A uniformly chosen element of the array. */
     pick: (arr) => arr[Math.floor(next() * arr.length)],
   };
 }
@@ -28,10 +28,10 @@ export function makeRng(seed) {
 /** Clamp v into the closed interval [min, max]. */
 export const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
-/** Linear interpolation between a and b by t. */
+/** Linear interpolation from a to b by t. */
 export const lerp = (a, b, t) => a + (b - a) * t;
 
-/** Shortest signed angle from a to b, in radians, in (-PI, PI]. */
+/** The shortest signed angle from a to b, in radians, within (-PI, PI]. */
 export function angleDelta(a, b) {
   const full = Math.PI * 2;
   let d = (b - a) % full;
