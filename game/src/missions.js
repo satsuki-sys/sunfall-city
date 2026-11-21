@@ -1,7 +1,8 @@
 // Missions: a three-job story for Rook, a courier who owes the city a favour,
-// plus the repeatable Taxi Dash on the side. Marisol at Café Solano hands out
-// the work by phone banner; a gold beacon marks the way, and the minimap
-// target follows it.
+// the repeatable Taxi Dash on the side, and a trail of twelve golden sun
+// discs hidden around the city for anyone who explores. Marisol at Café
+// Solano hands out the work by phone banner; a gold beacon marks the way,
+// and the minimap target follows it.
 //
 //   1. First Run         — pick up a package at the café, deliver it dockside.
 //   2. Borrowed Sunshine — steal the coral Vireo GT from Shoreline Motors and
@@ -10,11 +11,29 @@
 //                          nose, then lose the police to bank it.
 
 import * as THREE from 'three';
-import { POIS } from './city.js';
+import { POIS, groundHeightAt } from './city.js';
+import { PACKAGES } from './config.js';
 import { dist2d } from './random.js';
 import { Guard } from './combat.js';
+import { glowTexture } from './city.js';
 
 const CASE_POS = { x: -88, z: 330 }; // the cash case, at the end of the pier
+
+/** Where the twelve sun discs wait: pier, shore, forecourts and medians. */
+const DISC_SPOTS = [
+  { x: -88, z: 330 },   // the end of Palms Pier, beside the cash case
+  { x: -220, z: 252 },  // the boardwalk's west end
+  { x: 220, z: 252 },   // the boardwalk's east end
+  { x: 60, z: 272 },    // out on the sand
+  { x: 108, z: 198 },   // the Shoreline Motors lot
+  { x: 150, z: -70 },   // Tito's forecourt
+  { x: -115, z: -115 }, // the café corner
+  { x: -20, z: -158 },  // Sunfall General's steps
+  { x: 18, z: 18 },     // the station forecourt
+  { x: 158, z: 196 },   // the warehouse yard
+  { x: 0, z: -88 },     // an avenue median, for drivers
+  { x: -40, z: 50 },    // a downtown sidewalk corner
+];
 
 export class Missions {
   constructor(world) {
@@ -46,7 +65,36 @@ export class Missions {
     this.guard = new Guard(world.scene, world.rng, CASE_POS.x + 4.5, CASE_POS.z - 9, Math.PI);
     world.guards.push(this.guard);
 
+    // The sun discs: flat gold coins hovering over their spots, each with a
+    // halo so a sharp eye can spot one down an avenue.
+    this.discs = DISC_SPOTS.map((spot) => {
+      const group = new THREE.Group();
+      const coin = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.55, 0.55, 0.12, 20),
+        new THREE.MeshStandardMaterial({
+          color: 0xffc93e, roughness: 0.25, metalness: 0.75,
+          emissive: 0xa86e00, emissiveIntensity: 0.55,
+        }),
+      );
+      coin.rotation.x = Math.PI / 2.4;
+      group.add(coin);
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: glowTexture(), color: 0xffbe4d, transparent: true, opacity: 0.5,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      }));
+      halo.scale.setScalar(2.4);
+      group.add(halo);
+      group.position.set(spot.x, groundHeightAt(spot.x, spot.z) + 1.05, spot.z);
+      world.scene.add(group);
+      return { x: spot.x, z: spot.z, mesh: group, taken: false };
+    });
+
     world.onPedArrived = (ped) => this.#pedArrived(ped);
+  }
+
+  /** How many sun discs the player has picked up so far. */
+  get discsFound() {
+    return this.discs.filter((d) => d.taken).length;
   }
 
   /** Restore story progress from a save: jump straight to that job's first stage. */
@@ -54,6 +102,21 @@ export class Missions {
     this.storyIndex = Math.min(3, index);
     this.stage = ['toCafe', 'toLot', 'toPier', 'free'][this.storyIndex];
     this.guard.active = false;
+  }
+
+  /** Restore the collected discs from a save (a list of spot indices). */
+  restoreDiscs(indices) {
+    for (const disc of this.discs) {
+      disc.taken = false;
+      disc.mesh.visible = true;
+    }
+    for (const i of indices ?? []) {
+      const disc = this.discs[i];
+      if (disc) {
+        disc.taken = true;
+        disc.mesh.visible = false;
+      }
+    }
   }
 
   #setTarget(x, z, color = '#ffd23e') {
@@ -91,9 +154,39 @@ export class Missions {
     // The beacon breathes and slowly turns, playing or not.
     this.beacon.material.opacity = 0.2 + Math.sin(t * 3) * 0.07;
     this.beacon.rotation.y += dt * 0.4;
-    if (world.state === 'playing') {
+    // The discs spin and bob over their spots, waiting to be found.
+    for (const disc of this.discs) {
+      if (disc.taken) continue;
+      disc.mesh.rotation.y += dt * 1.6;
+      disc.mesh.position.y = groundHeightAt(disc.x, disc.z) + 1.05 + Math.sin(t * 2.2 + disc.x) * 0.14;
+    }
+    if (this.world.state === 'playing') {
       this.#updateStory();
       this.#updateTaxi(dt);
+      this.#updateDiscs();
+    }
+  }
+
+  /** Pick up any disc the player has just walked or driven over. */
+  #updateDiscs() {
+    const world = this.world;
+    const p = world.playerPos;
+    for (const disc of this.discs) {
+      if (disc.taken) continue;
+      if (dist2d(p.x, p.z, disc.x, disc.z) > PACKAGES.radius) continue;
+      disc.taken = true;
+      disc.mesh.visible = false;
+      const found = this.discsFound;
+      world.addCash(PACKAGES.reward);
+      world.audio.collect();
+      if (found >= PACKAGES.count) {
+        world.addCash(PACKAGES.fullBonus);
+        world.hud.toast('ALL SUN DISCS', `The full set · +$${PACKAGES.reward + PACKAGES.fullBonus}`);
+        world.hud.message('Marisol: "Every last one. The city really is yours, Rook."', '#ffd98f');
+      } else {
+        world.hud.message(`Sun disc found — ${found}/${PACKAGES.count} · +$${PACKAGES.reward}`, '#ffd98f');
+      }
+      world.saveGame();
     }
   }
 
@@ -120,6 +213,7 @@ export class Missions {
           hud.message('Marisol: "Clean work. Tito has something louder for you."', '#ffd98f');
           this.storyIndex = 1;
           this.stage = 'toLot';
+          hud.toast('NEW JOB', 'Borrowed Sunshine');
           world.saveGame();
         }
         break;
@@ -158,6 +252,7 @@ export class Missions {
           hud.message('Marisol: "One last thing, Rook. The pier. Sunset. Come hungry."', '#ffd98f');
           this.storyIndex = 2;
           this.stage = 'toPier';
+          hud.toast('NEW JOB', 'The Sunset Score');
           world.saveGame();
         }
         break;

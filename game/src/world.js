@@ -4,7 +4,7 @@
 // everything else lives here.
 
 import * as THREE from 'three';
-import { PALETTE, WANTED } from './config.js';
+import { PACKAGES, PALETTE, WANTED } from './config.js';
 import { clamp, dist2d, makeRng } from './random.js';
 import { buildCity, POIS } from './city.js';
 import { createCar } from './vehicles.js';
@@ -22,6 +22,9 @@ import { loadSave, writeSave } from './save.js';
 
 /** Stars each crime is worth when it is witnessed. */
 const CRIME_STARS = { shot: 1, theft: 1, hitCar: 1, grandTheft: 2, hitPed: 2, score: 2, hitPolice: 3 };
+
+/** Seconds of standing still beside an officer that ends in an arrest. */
+const BUST_SECONDS = 2.5;
 
 export class Game {
   constructor(container, opts = {}) {
@@ -166,6 +169,7 @@ export class Game {
     this.player.x = save.x ?? this.player.x;
     this.player.z = save.z ?? this.player.z;
     this.missions.restore(save.storyIndex ?? 0);
+    this.missions.restoreDiscs(save.discs ?? []);
   }
 
   saveGame() {
@@ -173,6 +177,7 @@ export class Game {
       cash: Math.floor(this.cash),
       storyIndex: this.missions.storyIndex,
       taxiFares: this.stats.taxiFares,
+      discs: this.missions.discs.map((d, i) => (d.taken ? i : -1)).filter((i) => i >= 0),
       x: Math.round(this.player.x),
       z: Math.round(this.player.z),
     });
@@ -310,11 +315,12 @@ export class Game {
     this.impactCooldown = Math.max(0, this.impactCooldown - dt);
     const car = this.playerVehicle;
     if (car) {
-      // A hard wall impact in a car is itself a crime.
+      // A hard wall impact in a car is itself a crime — and it thuds.
       if (car.lastImpact > 10 && this.impactCooldown <= 0) {
         this.reportCrime('hitCar', this.playerPos);
         this.impactCooldown = 2;
         this.shake(0.3);
+        this.audio.bump();
       }
       // Running someone down is the loudest crime there is.
       if (Math.abs(car.speed) > 4) {
@@ -331,12 +337,13 @@ export class Game {
       }
     }
 
-    // Bust: an officer on foot beside a slow, wanted player fills the meter.
+    // Bust: an officer on foot beside a slow, wanted player fills the meter —
+    // and the HUD now shows it filling, so the danger is readable.
     if (!car && this.wanted > 0 && this.player.speedNow < 1) {
       const near = this.police.nearestDistance(this.playerPos);
       if (near < 4.6) {
         this.bustMeter += dt;
-        if (this.bustMeter > 2.5) {
+        if (this.bustMeter > BUST_SECONDS) {
           this.state = 'busted';
           this.onEnd('busted');
         }
@@ -412,7 +419,9 @@ export class Game {
     if (playing || this.shotMode) {
       this.hud.setHealth(this.health / 100);
       this.hud.setCash(this.cash);
+      this.hud.setPackages(this.missions.discsFound, PACKAGES.count);
       this.hud.setWanted(this.wanted);
+      this.hud.setBust(this.bustMeter / BUST_SECONDS);
       this.hud.setSpeed(this.player.car ? this.player.car.speed * 3.6 : null);
       this.hud.setCrosshair(!this.player.car && playing && !this.shotMode);
       this.hud.update(dt);

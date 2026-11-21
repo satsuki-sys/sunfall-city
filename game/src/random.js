@@ -1,7 +1,7 @@
-// A small seeded random generator (mulberry32) plus the numeric helpers the
-// rest of the game shares. City generation and the screenshot scenes draw from
-// a fixed seed, so every visit — and every staged screenshot — sees the same
-// Sunfall City.
+// A small seeded random generator (mulberry32) and the numeric helpers the
+// rest of the game shares. City generation and the staged screenshot scenes
+// draw from fixed seeds, so every visit — and every screenshot — sees the
+// same Sunfall City.
 
 export function makeRng(seed) {
   let state = seed >>> 0;

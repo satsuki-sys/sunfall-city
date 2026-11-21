@@ -2,7 +2,8 @@
 // swing of the arms, turn with the camera, and collide with walls and cars;
 // F gets into the nearest car (hot-wiring a stranger's ride is a crime when
 // someone sees it) and F again gets out. The camera is a soft orbit rig that
-// follows behind, pulls in rather than clipping into roofs, and aims the gun.
+// follows behind, pulls in rather than clipping into roofs, leans into a
+// drive with a speed FOV kick and a look-ahead, and aims the gun.
 
 import * as THREE from 'three';
 import { CITY, PLAYER } from './config.js';
@@ -46,6 +47,7 @@ export class Player {
     car.speed = 0;
     this.car = null;
     this.mesh.visible = true;
+    world.audio.screech(0);
     world.audio.door();
   }
 
@@ -63,19 +65,27 @@ export class Player {
     const car = this.car;
     const throttle = input.axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp']);
     const steer = input.axis(['KeyD', 'ArrowRight'], ['KeyA', 'ArrowLeft']);
-    stepCar(car, { throttle, steer, brake: input.down('Space') }, dt, world.colliders, world.cars);
+    const handbrake = input.down('Space');
+    stepCar(car, { throttle, steer, brake: handbrake }, dt, world.colliders, world.cars);
     this.x = car.x;
     this.z = car.z;
     this.heading = car.heading;
     this.speedNow = Math.abs(car.speed);
     world.audio.engine(clamp(Math.abs(car.speed) / car.spec.maxSpeed, 0, 1));
+    // Tires protest when the handbrake is yanked at speed.
+    const sliding = handbrake && Math.abs(car.speed) > 8;
+    world.audio.screech(sliding ? clamp(Math.abs(car.speed) / car.spec.maxSpeed, 0, 1) : 0);
     if (input.justPressed('KeyH')) world.audio.horn();
-    if (car.lastImpact > 9 && Math.abs(car.speed) < 4) world.shake(0.25);
+    if (car.lastImpact > 9 && Math.abs(car.speed) < 4) {
+      world.shake(0.25);
+      world.audio.bump();
+    }
   }
 
   /** On foot: move relative to the camera's ground-projected facing. */
   #walk(dt, world, input) {
     world.audio.engine(null);
+    world.audio.screech(0);
     const camYaw = world.cameraRig.yaw;
     const fwd = input.axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp']);
     const strafe = input.axis(['KeyA', 'ArrowLeft'], ['KeyD', 'ArrowRight']);
@@ -136,6 +146,7 @@ export class CameraRig {
     this.dist = 8;
     this.shakeTime = 0;
     this.forward = new THREE.Vector3(0, 0, 1);
+    this.baseFov = camera.fov;
   }
 
   shake(t) { this.shakeTime = Math.max(this.shakeTime, t); }
@@ -153,6 +164,20 @@ export class CameraRig {
       (world.playerVehicle ? world.playerVehicle.mesh.position.y + 1.3 : groundHeightAt(world.playerPos.x, world.playerPos.z) + 1.6),
       world.playerPos.z,
     );
+    // While driving, the camera looks a little way up the road the car is
+    // actually travelling — the frame leads the car instead of chasing it.
+    if (driving) {
+      const car = world.playerVehicle;
+      target.x += Math.sin(car.heading) * car.speed * 0.16;
+      target.z += Math.cos(car.heading) * car.speed * 0.16;
+    }
+    // Speed opens the lens a touch: 62° at a crawl, up to ~71° flat out.
+    const speedRatio = driving ? clamp(Math.abs(world.playerVehicle.speed) / world.playerVehicle.spec.maxSpeed, 0, 1) : 0;
+    const wantFov = this.baseFov + speedRatio * 9;
+    if (Math.abs(this.camera.fov - wantFov) > 0.02) {
+      this.camera.fov += (wantFov - this.camera.fov) * Math.min(1, dt * 3.5 + 0.02);
+      this.camera.updateProjectionMatrix();
+    }
     const wantDist = driving ? Math.max(this.dist, 9.5) : this.dist;
     const back = new THREE.Vector3(
       -Math.sin(this.yaw) * Math.cos(this.pitch),

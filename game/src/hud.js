@@ -1,6 +1,7 @@
-// The HUD is plain DOM layered over the canvas: health and cash at the top
-// left, wanted stars at the top right, the mission objective under the top
-// centre, a banner for story messages, an interaction prompt, a speedometer
+// The HUD is plain DOM layered over the canvas: health, cash and the sun-disc
+// count at the top left, wanted stars at the top right, the mission objective
+// under the top centre, a banner for story messages, an interaction prompt,
+// a speedometer, a bust meter that fills while the law closes in on foot,
 // and a damage vignette. Setters cache their last value so unchanged readouts
 // never touch the DOM twice.
 
@@ -10,6 +11,7 @@ export class Hud {
     this.root = byId('hud');
     this.healthBar = byId('health-bar');
     this.cashEl = byId('cash');
+    this.packagesEl = byId('packages');
     this.starsEl = byId('stars');
     this.objectiveEl = byId('objective');
     this.objectiveTitle = byId('objective-title');
@@ -18,6 +20,8 @@ export class Hud {
     this.bannerEl = byId('banner');
     this.promptEl = byId('prompt');
     this.speedEl = byId('speed');
+    this.bustWrap = byId('bust-wrap');
+    this.bustBar = byId('bust-bar');
     this.crosshairEl = byId('crosshair');
     this.vignetteEl = byId('vignette');
     this.toastEl = byId('toast');
@@ -29,6 +33,8 @@ export class Hud {
     this.vignette = 0;
     this.lastStars = -1;
     this.lastCash = null;
+    this.lastPackages = -1;
+    this.lastBust = -1;
   }
 
   show() { this.root.style.display = 'block'; }
@@ -46,11 +52,29 @@ export class Hud {
     this.cashEl.textContent = `$${Math.floor(n).toLocaleString('en-US')}`;
   }
 
+  /** The sun-disc tally under the cash: found out of the city's total. */
+  setPackages(found, total) {
+    if (found === this.lastPackages) return;
+    this.lastPackages = found;
+    this.packagesEl.textContent = `◆ SUN DISCS ${found}/${total}`;
+    this.packagesEl.style.color = found >= total ? '#ffd23e' : 'rgba(255,233,200,.8)';
+  }
+
   setWanted(n) {
     if (n === this.lastStars) return;
     this.lastStars = n;
     this.starsEl.textContent = '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n);
     this.starsEl.style.opacity = n === 0 ? '0.25' : '1';
+  }
+
+  /** The bust meter: visible only while it is filling (frac > 0). */
+  setBust(frac) {
+    const shown = frac > 0.01;
+    const rounded = Math.round(frac * 40);
+    if (rounded === this.lastBust) return;
+    this.lastBust = rounded;
+    this.bustWrap.style.display = shown ? 'block' : 'none';
+    if (shown) this.bustBar.style.width = `${Math.min(100, frac * 100)}%`;
   }
 
   setObjective(title, text, dist) {

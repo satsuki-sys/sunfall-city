@@ -1,7 +1,8 @@
 // The minimap: a north-up canvas plot of the avenue grid, the beach and the
-// sea, with blips for the player, the player's car, the police and whatever
-// the current objective points at. It is redrawn every frame from live
-// positions, so nothing here keeps state between frames.
+// sea, with blips for the player, the player's car, the police, the sun discs
+// still waiting out there and whatever the current objective points at. It is
+// redrawn every frame from live positions, so nothing here keeps state
+// between frames. The on-page legend beside the map names each marker.
 
 import { CITY, avenueLines } from './config.js';
 
@@ -41,6 +42,18 @@ export class Minimap {
     for (const a of this.avenues) {
       g.beginPath(); g.moveTo(mapX(a), 0); g.lineTo(mapX(a), SIZE); g.stroke();
       g.beginPath(); g.moveTo(0, mapZ(a)); g.lineTo(SIZE, mapZ(a)); g.stroke();
+    }
+
+    // Sun discs still uncollected: small amber dots, steady — treasure, not alarm.
+    const discs = world.missions?.discs;
+    if (discs) {
+      g.fillStyle = '#ffb02e';
+      for (const disc of discs) {
+        if (disc.taken) continue;
+        g.beginPath();
+        g.arc(mapX(disc.x), mapZ(disc.z), 2.1, 0, Math.PI * 2);
+        g.fill();
+      }
     }
 
     // Police blips, flashing blue and red in turn.

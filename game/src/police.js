@@ -1,7 +1,7 @@
 // The Sunfall PD: interceptors that answer the wanted level. They spawn on
 // avenues a block or two from the player, hunt the player's position, ram a
-// fleeing car and box in a runner on foot. Their light bars alternate red and
-// blue, and the nearest unit's siren feeds the audio bank.
+// fleeing car and box in a runner on foot. Their light bars alternate red
+// and blue — halos and all — and the nearest unit's siren feeds the audio.
 
 import { WANTED } from './config.js';
 import { angleDelta, clamp, dist2d } from './random.js';
@@ -50,8 +50,8 @@ export class PoliceForce {
       }
     }
 
-    // Drive every unit, strobe its light bar, and feed the siren mix from the
-    // nearest unit's distance.
+    // Drive every unit, strobe its light bar and halos, and feed the siren
+    // mix from the nearest unit's distance.
     let nearest = Infinity;
     for (const u of this.units) {
       this.#drive(u, dt);
@@ -60,6 +60,11 @@ export class PoliceForce {
         const phase = Math.floor(t * 3.2 + u.x) % 2;
         flash[0].emissiveIntensity = phase === 0 ? 2.4 : 0.15;
         flash[1].emissiveIntensity = phase === 0 ? 0.15 : 2.4;
+        const glow = u.mesh.userData.flashGlow;
+        if (glow) {
+          glow[0].opacity = phase === 0 ? 0.55 : 0.05;
+          glow[1].opacity = phase === 0 ? 0.05 : 0.55;
+        }
       }
       if (u.health <= 0) u.retire = (u.retire ?? 0) + dt;
       nearest = Math.min(nearest, dist2d(u.x, u.z, world.playerPos.x, world.playerPos.z));

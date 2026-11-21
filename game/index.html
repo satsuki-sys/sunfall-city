@@ -15,6 +15,7 @@
   #health-wrap { width: 210px; height: 13px; background: rgba(10,14,18,.55); border: 1px solid rgba(255,247,232,.5); border-radius: 7px; overflow: hidden; }
   #health-bar { height: 100%; width: 100%; background: #7bc96f; transition: width .18s ease; }
   #cash { font-size: 24px; font-weight: 800; letter-spacing: .4px; margin-top: 5px; color: #ffe9a8; }
+  #packages { font-size: 13px; font-weight: 700; letter-spacing: 1.5px; margin-top: 2px; color: rgba(255,233,200,.8); }
   #stars { position: absolute; top: 12px; right: 20px; font-size: 27px; letter-spacing: 3px; color: #ffd23e; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
   #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); text-align: center; background: rgba(12,16,20,.45); padding: 7px 20px 9px; border-radius: 10px; max-width: 46%; }
   #objective-title { font-size: 12px; font-weight: 800; letter-spacing: 3px; color: #ffd23e; }
@@ -25,9 +26,17 @@
   #toast-title { font-family: Georgia, "Times New Roman", serif; font-size: 44px; font-weight: 700; letter-spacing: 5px; color: #fff3d6; text-shadow: 0 3px 14px rgba(0,0,0,.7); }
   #toast-sub { font-size: 17px; letter-spacing: 2px; color: #ffd98f; text-shadow: 0 2px 6px rgba(0,0,0,.7); }
   #prompt { position: absolute; bottom: 118px; left: 50%; transform: translateX(-50%); background: rgba(12,16,20,.62); padding: 6px 16px; border-radius: 8px; font-size: 15.5px; font-weight: 600; display: none; }
+  #bust-wrap { position: absolute; bottom: 158px; left: 50%; transform: translateX(-50%); width: 220px; display: none; text-align: center; }
+  #bust-label { font-size: 12px; font-weight: 800; letter-spacing: 4px; color: #ff8a7a; text-shadow: 0 1px 3px rgba(0,0,0,.7); margin-bottom: 3px; }
+  #bust-track { height: 9px; background: rgba(10,14,18,.55); border: 1px solid rgba(255,138,122,.6); border-radius: 5px; overflow: hidden; }
+  #bust-bar { height: 100%; width: 0%; background: #e5534b; }
   #speed { position: absolute; right: 24px; bottom: 216px; font-size: 21px; font-weight: 800; color: #fff7e8; text-shadow: 0 1px 4px rgba(0,0,0,.65); display: none; }
   #minimap-wrap { position: absolute; right: 18px; bottom: 18px; width: 184px; height: 184px; border-radius: 50%; border: 3px solid rgba(255,247,232,.65); overflow: hidden; box-shadow: 0 4px 18px rgba(0,0,0,.45); background: #17303a; }
   #minimap { width: 184px; height: 184px; display: block; }
+  #legend { position: absolute; right: 22px; bottom: 210px; font-size: 11px; line-height: 1.55; letter-spacing: .4px; text-align: right; color: rgba(255,247,232,.85); text-shadow: 0 1px 3px rgba(0,0,0,.75); }
+  #legend .lg-gold { color: #ffd23e; }
+  #legend .lg-disc { color: #ffb02e; }
+  #legend .lg-cop { color: #7db4ff; }
   #crosshair { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: rgba(255,247,232,.9); box-shadow: 0 0 5px rgba(0,0,0,.8); display: none; }
   #vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 52%, rgba(200,30,20,.55) 100%); opacity: 0; }
   #hint { position: absolute; left: 18px; bottom: 16px; font-size: 12.5px; line-height: 1.5; color: rgba(255,247,232,.75); text-shadow: 0 1px 3px rgba(0,0,0,.7); }
@@ -43,6 +52,7 @@
   .btn.secondary { background: rgba(20,28,34,.75); border: 1px solid rgba(255,247,232,.5); }
   .controls { margin-top: 30px; font-size: 14.5px; line-height: 1.75; color: rgba(255,247,232,.88); text-shadow: 0 1px 4px rgba(0,0,0,.75); }
   .controls b { color: #ffd98f; }
+  #pause-stats { font-size: 15.5px; font-weight: 600; letter-spacing: 1px; color: #ffe9a8; margin: 2px 0 10px; text-shadow: 0 1px 4px rgba(0,0,0,.7); }
   #pause-screen, #end-screen { background: rgba(16,10,8,.55); }
   .fine { font-size: 16px; color: #ffb4a2; margin: 8px 0 22px; }
 </style>
@@ -51,12 +61,13 @@
 <!-- The WebGL canvas mounts here. -->
 <div id="app"></div>
 
-<!-- In-game overlay: health, cash, stars, objective, banners, minimap. -->
+<!-- In-game overlay: health, cash, discs, stars, objective, banners, minimap. -->
 <div id="hud">
   <div id="vignette"></div>
   <div id="stats">
     <div id="health-wrap"><div id="health-bar"></div></div>
     <div id="cash">$0</div>
+    <div id="packages">◆ SUN DISCS 0/12</div>
   </div>
   <div id="stars">☆☆☆☆☆</div>
   <div id="objective">
@@ -67,7 +78,9 @@
   <div id="banner"></div>
   <div id="toast"><div id="toast-title"></div><div id="toast-sub"></div></div>
   <div id="prompt"></div>
+  <div id="bust-wrap"><div id="bust-label">BUSTED</div><div id="bust-track"><div id="bust-bar"></div></div></div>
   <div id="speed"></div>
+  <div id="legend"><span class="lg-gold">◆</span> objective · <span class="lg-disc">●</span> sun disc<br><span class="lg-cop">■</span> police · ▲ you · □ your car</div>
   <div id="minimap-wrap"><canvas id="minimap" width="184" height="184"></canvas></div>
   <div id="crosshair"></div>
   <div id="hint">WASD move · mouse look · F car · click shoot<br>Shift sprint · Space handbrake · P pause</div>
@@ -85,12 +98,18 @@
   </div>
 </div>
 
-<!-- Pause screen. -->
+<!-- Pause screen: tally, the full controls list, and the way back in. -->
 <div id="pause-screen" class="screen">
   <h2>PAUSED</h2>
   <p class="tagline">The city waits. It is good at that.</p>
+  <div id="pause-stats"></div>
   <button class="btn" id="btn-resume">RESUME</button>
   <button class="btn secondary" id="btn-quit-title">SAVE &amp; TITLE</button>
+  <div class="controls">
+    <b>WASD / arrows</b> walk &amp; drive &nbsp;·&nbsp; <b>Mouse</b> look &nbsp;·&nbsp; <b>Click</b> shoot<br>
+    <b>F</b> enter / exit car &nbsp;·&nbsp; <b>Shift</b> sprint &nbsp;·&nbsp; <b>Space</b> handbrake<br>
+    <b>H</b> horn &nbsp;·&nbsp; <b>Wheel</b> camera distance &nbsp;·&nbsp; <b>P</b> resume
+  </div>
 </div>
 
 <!-- Downed / busted screen; main.js fills in the heading and the fine print. -->

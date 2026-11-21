@@ -102,7 +102,8 @@ export function stageShot(game, name) {
     step(game, 2);
   } else {
     // cover: on foot at the café corner, looking south-east down the avenue
-    // toward the boardwalk and the sea, with traffic rolling through.
+    // toward the boardwalk and the sea, with traffic rolling through — and a
+    // sun disc glinting on the café corner behind the player's shoulder.
     placePlayer(game, -112, -102, 0.62);
     const traffic = game.cars.find((c) => c.traffic);
     if (traffic) {

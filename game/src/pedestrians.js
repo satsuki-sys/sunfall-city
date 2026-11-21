@@ -1,7 +1,7 @@
 // Pedestrians: low-poly people who stroll the sidewalk loops block by block,
 // cross the street at corners, wave for taxis, and run when the city turns
-// dangerous near them. A person is a handful of boxes; the walk is a swing of
-// the legs and arms plus a little bob.
+// dangerous near them. A person is a handful of boxes — some in sun hats,
+// some in caps — and the walk is a swing of the legs and arms plus a bob.
 
 import * as THREE from 'three';
 import { blockCentres } from './config.js';
@@ -11,6 +11,7 @@ import { groundHeightAt } from './city.js';
 const SKIN = [0xf2c9a0, 0xd99e6a, 0xa06844, 0x7a4a2c, 0xffe0bd];
 const SHIRTS = [0xe8836b, 0x63b3a6, 0xf2c14e, 0xf7f3ea, 0xd96c85, 0x7fb2d9, 0x9bc53d, 0xff8c42];
 const PANTS = [0x39434f, 0x5b4a3f, 0x2f4858, 0x746a5a, 0x864343];
+const HATS = [0xf2e3c6, 0xe4572e, 0x2a9d8f, 0xf7f3ea, 0x39434f];
 
 /** Build one person. `fixed` pins any of skin/shirt/pants instead of rolling for them. */
 export function makePerson(rng, fixed = null) {
@@ -42,8 +43,24 @@ export function makePerson(rng, fixed = null) {
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), mat(skin));
   head.position.y = 1.58;
   head.castShadow = true;
-
   g.add(legL, legR, torso, armL, armR, head);
+
+  // About half the city wears something against the sun: a wide-brimmed hat
+  // or a flat cap, in a colour that argues with the shirt.
+  const hatRoll = fixed?.hat ?? rng.next();
+  if (hatRoll < 0.3) {
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.04, 10), mat(rng.pick(HATS)));
+    brim.position.y = 1.7;
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.16, 0.12, 10), brim.material);
+    crown.position.y = 1.77;
+    g.add(brim, crown);
+  } else if (hatRoll < 0.55) {
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat(rng.pick(HATS)));
+    cap.position.y = 1.6;
+    cap.scale.y = 0.7;
+    g.add(cap);
+  }
+
   g.userData.parts = { legL, legR, armL, armR, torso, head };
   return g;
 }
@@ -53,7 +70,7 @@ const LOOP = 15.5; // sidewalk loop offset from a block centre
 
 export class Pedestrian {
   constructor(scene, rng, player = false) {
-    this.mesh = makePerson(rng, player ? { skin: 0xd99e6a, shirt: 0x1f8a8c, pants: 0x2f3542 } : null);
+    this.mesh = makePerson(rng, player ? { skin: 0xd99e6a, shirt: 0x1f8a8c, pants: 0x2f3542, hat: 1 } : null);
     scene.add(this.mesh);
     this.rng = rng;
     this.x = 0;

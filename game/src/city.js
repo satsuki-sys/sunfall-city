@@ -1,7 +1,8 @@
 // Sunfall City itself: a sun-soaked coastal grid built procedurally — pastel
-// towers with lit windows, palm-lined avenues, named places of interest with
-// hand-lettered signs, a boardwalk, a beach and the sea to the south. All of
-// it is geometry and canvas textures made here; nothing is loaded from disk.
+// towers with lit windows under a gradient sunset sky, palm-lined avenues,
+// named places of interest with hand-lettered signs, a boardwalk, a beach
+// and a shimmering sea to the south. All of it is geometry and canvas
+// textures made here; nothing is loaded from disk.
 
 import * as THREE from 'three';
 import { CITY, PALETTE, avenueLines, blockCentres } from './config.js';
@@ -27,7 +28,11 @@ const POI_BY_BLOCK = new Map([
   ['8,9', { poi: 'carLot', h: 6, tint: 0xe8836b }],
 ]);
 
-const SHOP_SIGNS = ['Palms Hotel', 'Surf & Sand', 'Banco del Sol', 'Cine Mar', 'Marina Books', 'Hotel Brisa', 'La Ola Tacos', 'Sunset Realty'];
+const SHOP_SIGNS = [
+  'Palms Hotel', 'Surf & Sand', 'Banco del Sol', 'Cine Mar', 'Marina Books',
+  'Hotel Brisa', 'La Ola Tacos', 'Sunset Realty', 'Café Solano', 'Bar Ola',
+  'Dulce Vida', 'Pier 9 Gifts',
+];
 
 const CENTRES = blockCentres();
 
@@ -56,23 +61,27 @@ function canvasTexture(w, h, draw) {
 }
 
 /**
- * A building facade and its emissive twin. The facade pass paints pale plaster
+ * One building facade and its emissive twin. The facade pass paints plaster
  * and a grid of windows, remembering which are lit; the emissive pass repaints
- * exactly those windows warm, so towers glow after dark.
+ * exactly those windows warm, so the towers glow at dusk. `variant` changes
+ * the window grid and the plaster tone so no two streets look stamped out.
  */
-function facadeTextures() {
-  const cols = 6;
-  const rows = 12;
+function facadeTextures(variant) {
+  const cols = 5 + variant;          // 5, 6 or 7 windows across
+  const rows = 10 + variant * 2;     // 10, 12 or 14 floors of windows
+  const plaster = ['#ddd5c2', '#e3d9c8', '#d8cdb4'][variant];
   const lit = [];
   const facade = canvasTexture(128, 256, (g) => {
-    g.fillStyle = '#ddd5c2';
+    g.fillStyle = plaster;
     g.fillRect(0, 0, 128, 256);
+    const cw = 128 / cols;
+    const rh = 256 / rows;
     for (let r = 0; r < rows; r += 1) {
       for (let c = 0; c < cols; c += 1) {
         const on = Math.random() < 0.24;
         lit.push(on);
         g.fillStyle = on ? '#5a4632' : '#39434f';
-        g.fillRect(8 + c * 20, 10 + r * 20, 12, 13);
+        g.fillRect(4 + c * cw, 5 + r * rh, cw - 8, rh - 9);
       }
     }
   });
@@ -80,9 +89,11 @@ function facadeTextures() {
   const emissive = canvasTexture(128, 256, (g) => {
     g.fillStyle = '#000';
     g.fillRect(0, 0, 128, 256);
+    const cw = 128 / cols;
+    const rh = 256 / rows;
     for (let r = 0; r < rows; r += 1) {
       for (let c = 0; c < cols; c += 1) {
-        if (lit[i]) { g.fillStyle = '#ffb45e'; g.fillRect(8 + c * 20, 10 + r * 20, 12, 13); }
+        if (lit[i]) { g.fillStyle = '#ffb45e'; g.fillRect(4 + c * cw, 5 + r * rh, cw - 8, rh - 9); }
         i += 1;
       }
     }
@@ -126,15 +137,70 @@ function frondTexture() {
   return tex;
 }
 
+/** A soft radial glow sprite texture — lamp halos, the sun's aura, disc shine. */
+export function glowTexture() {
+  const tex = canvasTexture(128, 128, (g) => {
+    const grad = g.createRadialGradient(64, 64, 2, 64, 64, 64);
+    grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+    grad.addColorStop(0.35, 'rgba(255,255,255,0.32)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 128, 128);
+  });
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
+}
+
+/** The sunset sky as a painted vertical gradient on a canvas strip. */
+function skyTexture() {
+  const tex = canvasTexture(4, 512, (g) => {
+    const grad = g.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0.0, '#5f8fce');   // zenith: deepening blue
+    grad.addColorStop(0.38, '#a8c4e0');  // pale upper sky
+    grad.addColorStop(0.62, '#f7c98a');  // warm band
+    grad.addColorStop(0.78, '#ff9e5e');  // horizon glow
+    grad.addColorStop(0.86, '#f6a96b');  // at the skyline
+    grad.addColorStop(1.0, '#e88a54');   // below the horizon, unseen
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 4, 512);
+  });
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
+}
+
+/** Sea sparkle: a teal field flecked with pale streaks that catch the sun. */
+function waterTexture() {
+  const tex = canvasTexture(256, 256, (g) => {
+    g.fillStyle = '#2e8fa3';
+    g.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 900; i += 1) {
+      const a = Math.random();
+      g.fillStyle = a < 0.5 ? 'rgba(255,240,200,0.20)' : 'rgba(20,90,110,0.25)';
+      g.fillRect(Math.random() * 256, Math.random() * 256, 3 + Math.random() * 9, 1.4);
+    }
+  });
+  tex.repeat.set(26, 26);
+  return tex;
+}
+
 export function buildCity(scene, rng) {
   const colliders = [];
-  const { facade, emissive } = facadeTextures();
+  const facades = [facadeTextures(0), facadeTextures(1), facadeTextures(2)];
+  const glowTex = glowTexture();
   const tints = [0xf7f3ea, 0xf2c9a0, 0xe8836b, 0x9fd4c5, 0xf2e3c6, 0xd96c85, 0xa8c6df, 0xf2d16b];
-  const materials = tints.map((tint) => new THREE.MeshStandardMaterial({
-    color: tint, roughness: 0.92, metalness: 0.02,
-    map: facade, emissive: 0xffb45e, emissiveIntensity: 0.38, emissiveMap: emissive,
-  }));
+  // Each tint gets one of the three facade variants, so the window grids vary
+  // from tower to tower instead of repeating a single stamp.
+  const materials = tints.map((tint, i) => {
+    const f = facades[i % facades.length];
+    return new THREE.MeshStandardMaterial({
+      color: tint, roughness: 0.92, metalness: 0.02,
+      map: f.facade, emissive: 0xffb45e, emissiveIntensity: 0.38, emissiveMap: f.emissive,
+    });
+  });
   const roofMat = new THREE.MeshStandardMaterial({ color: 0x8a6f55, roughness: 1 });
+  const awningMats = [0xc94f30, 0x2a7f76, 0xe8a13a, 0x7a4a6e].map(
+    (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 }),
+  );
   // One unit box, pivoted at its base, scaled into every building.
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
   boxGeo.translate(0, 0.5, 0);
@@ -147,6 +213,14 @@ export function buildCity(scene, rng) {
     mesh.receiveShadow = true;
     scene.add(mesh);
     colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+    // A pale cornice caps the taller towers, catching the last of the sun.
+    if (h > 14) {
+      const trim = new THREE.Mesh(boxGeo, roofMat);
+      trim.scale.set(w * 1.04, 0.5, d * 1.04);
+      trim.position.set(x, 0.3 + h, z);
+      trim.castShadow = true;
+      scene.add(trim);
+    }
     // Tall buildings sometimes grow a rooftop box.
     if (h > 18 && rng.chance(0.7)) {
       const prop = new THREE.Mesh(boxGeo, roofMat);
@@ -156,6 +230,16 @@ export function buildCity(scene, rng) {
       scene.add(prop);
     }
     return mesh;
+  };
+
+  /** A striped canvas awning over a ground-floor frontage, on the south face. */
+  const addAwning = (x, z, w, faceDepth) => {
+    const awning = new THREE.Mesh(boxGeo, rng.pick(awningMats));
+    awning.scale.set(Math.min(w * 0.72, 11), 0.16, 2.1);
+    awning.position.set(x, 3.05, z + faceDepth / 2 + 0.9);
+    awning.rotation.x = 0.38;
+    awning.castShadow = true;
+    scene.add(awning);
   };
 
   const addSign = (text, x, y, z, ry, w = 13) => {
@@ -168,6 +252,14 @@ export function buildCity(scene, rng) {
     sign.rotation.y = ry;
     scene.add(sign);
   };
+
+  // --- The sky: a gradient dome the size of the world, sun disc inside it ----
+  const skyDome = new THREE.Mesh(
+    new THREE.SphereGeometry(880, 24, 14),
+    new THREE.MeshBasicMaterial({ map: skyTexture(), side: THREE.BackSide, fog: false, depthWrite: false }),
+  );
+  skyDome.renderOrder = -10;
+  scene.add(skyDome);
 
   // --- Ground cover: grass under everything, roads on top ---------------------
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(1700, 1700), new THREE.MeshStandardMaterial({ color: PALETTE.grass, roughness: 1 }));
@@ -230,9 +322,10 @@ export function buildCity(scene, rng) {
       const poiDef = POI_BY_BLOCK.get(`${bi},${bj}`);
       if (poiDef) {
         const poi = Object.values(POIS).find((p) => p.x === cx && p.z === cz);
+        const f = facades[(bi + bj) % facades.length];
         const mat = new THREE.MeshStandardMaterial({
-          color: poiDef.tint, roughness: 0.9, map: facade,
-          emissive: 0xffb45e, emissiveIntensity: 0.4, emissiveMap: emissive,
+          color: poiDef.tint, roughness: 0.9, map: f.facade,
+          emissive: 0xffb45e, emissiveIntensity: 0.4, emissiveMap: f.emissive,
         });
         if (poiDef.poi === 'carLot') {
           // An open lot: a low office hut only — the cars are the scenery.
@@ -242,6 +335,7 @@ export function buildCity(scene, rng) {
           addBuilding(cx, cz, 26, poiDef.h, 20, mat);
           addSign(poi.name, cx, poiDef.h * 0.72, cz + 10.2, 0, 15);
           addSign(poi.name, cx - 13.2, poiDef.h * 0.72, cz, -Math.PI / 2, 15);
+          if (poiDef.poi !== 'station' && poiDef.poi !== 'hospital') addAwning(cx, cz, 26, 20);
         }
         return;
       }
@@ -250,17 +344,25 @@ export function buildCity(scene, rng) {
       const mat = () => rng.pick(materials);
       if (pattern < 0.34) {
         addBuilding(cx, cz, rng.range(15, 21), rng.range(24, 52), rng.range(15, 21), mat());
+        if (rng.chance(0.5)) addAwning(cx, cz, 15, 17);
       } else if (pattern < 0.72) {
         for (const ox of [-8, 8]) for (const oz of [-8, 8]) {
           if (rng.chance(0.85)) addBuilding(cx + ox, cz + oz, rng.range(10, 13), rng.range(7, 30), rng.range(10, 13), mat());
         }
+        if (rng.chance(0.4)) addAwning(cx - 8, cz + 8, 11, 11);
       } else {
         addBuilding(cx - 8, cz, rng.range(11, 14), rng.range(9, 34), rng.range(16, 24), mat());
         addBuilding(cx + 9, cz + 2, rng.range(10, 13), rng.range(6, 20), rng.range(12, 18), mat());
+        if (rng.chance(0.4)) addAwning(cx - 8, cz, 18, 20);
       }
-      if (rng.chance(0.3) && shopIndex < SHOP_SIGNS.length) {
+      if (rng.chance(0.45) && shopIndex < SHOP_SIGNS.length) {
         addSign(SHOP_SIGNS[shopIndex], cx, rng.range(3.4, 4.6), cz + 15.4, 0, 11);
         shopIndex += 1;
+        // Busy corners carry a second sign around the side.
+        if (rng.chance(0.4) && shopIndex < SHOP_SIGNS.length) {
+          addSign(SHOP_SIGNS[shopIndex], cx + 15.4, rng.range(3.4, 4.6), cz, Math.PI / 2, 11);
+          shopIndex += 1;
+        }
       }
     });
   });
@@ -295,12 +397,17 @@ export function buildCity(scene, rng) {
     if (rng.chance(0.25)) addPalm(cx - 15.5, cz - 15.5);
   }
 
-  // --- Streetlights along the avenues -----------------------------------------
+  // --- Streetlights along the avenues, haloed at dusk --------------------------
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x4a4f57, roughness: 0.7, metalness: 0.4 });
   const lampMat = new THREE.MeshBasicMaterial({ color: 0xffd98f });
   const poleGeo = new THREE.CylinderGeometry(0.07, 0.09, 5.4, 5);
   poleGeo.translate(0, 2.7, 0);
   const lampGeo = new THREE.SphereGeometry(0.22, 8, 6);
+  const lampGlowMat = new THREE.SpriteMaterial({
+    map: glowTex, color: 0xffc978, transparent: true, opacity: 0.34,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  let lampCount = 0;
   for (const a of avenueLines()) {
     for (let t = -CITY.half + 22; t < CITY.half; t += 44) {
       for (const [x, z] of [[a + 7.6, t], [t, a - 7.6]]) {
@@ -310,6 +417,15 @@ export function buildCity(scene, rng) {
         const lamp = new THREE.Mesh(lampGeo, lampMat);
         lamp.position.set(x, 5.4, z);
         scene.add(lamp);
+        // Every other lamp wears a halo sprite — enough glow to read as dusk
+        // without doubling the draw calls.
+        lampCount += 1;
+        if (lampCount % 2 === 0) {
+          const halo = new THREE.Sprite(lampGlowMat);
+          halo.scale.setScalar(2.6);
+          halo.position.set(x, 5.4, z);
+          scene.add(halo);
+        }
       }
     }
   }
@@ -325,7 +441,12 @@ export function buildCity(scene, rng) {
   sand.position.set(0, -0.02, CITY.beachZ + 38);
   sand.receiveShadow = true;
   scene.add(sand);
-  const waterMat = new THREE.MeshStandardMaterial({ color: PALETTE.water, roughness: 0.35, metalness: 0.1, transparent: true, opacity: 0.94 });
+  const seaTex = waterTexture();
+  const waterMat = new THREE.MeshStandardMaterial({
+    color: PALETTE.water, roughness: 0.32, metalness: 0.12,
+    transparent: true, opacity: 0.94, map: seaTex,
+    emissive: 0x1d4e5e, emissiveIntensity: 0.25, emissiveMap: seaTex,
+  });
   const water = new THREE.Mesh(new THREE.PlaneGeometry(1700, 700), waterMat);
   water.rotation.x = -Math.PI / 2;
   water.position.set(0, -0.5, CITY.waterZ + 350);
@@ -334,11 +455,18 @@ export function buildCity(scene, rng) {
   pierDeck.position.set(POIS.pier.x, 0.5, CITY.waterZ + 22);
   scene.add(pierDeck);
 
-  // --- Sky dressing: the sun disc and drifting clouds ---------------------------
+  // --- Sky dressing: the sun disc, its aura and drifting clouds -----------------
   const sun = new THREE.Mesh(new THREE.CircleGeometry(26, 24), new THREE.MeshBasicMaterial({ color: 0xfff2c0, fog: false }));
   sun.position.set(-620, 150, 420);
   sun.lookAt(0, 40, 0);
   scene.add(sun);
+  const sunAura = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTex, color: 0xffbe78, transparent: true, opacity: 0.55,
+    blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+  }));
+  sunAura.scale.setScalar(190);
+  sunAura.position.copy(sun.position);
+  scene.add(sunAura);
   const cloudMat = new THREE.MeshBasicMaterial({ color: 0xfff4e0, transparent: true, opacity: 0.85 });
   const clouds = [];
   for (let i = 0; i < 9; i += 1) {
@@ -371,9 +499,11 @@ export function buildCity(scene, rng) {
   return {
     colliders,
     parkedSpots,
-    /** Animate the waterline and drift the clouds. */
+    /** Bob the waterline, scroll the sea sparkle and drift the clouds. */
     update(dt, t) {
       water.position.y = -0.5 + Math.sin(t * 0.7) * 0.07;
+      seaTex.offset.x = (t * 0.008) % 1;
+      seaTex.offset.y = Math.sin(t * 0.23) * 0.012;
       for (const cloud of clouds) {
         cloud.position.x += dt * 1.1;
         if (cloud.position.x > 680) cloud.position.x = -680;

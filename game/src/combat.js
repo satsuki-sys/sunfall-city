@@ -10,7 +10,7 @@ import { groundHeightAt } from './city.js';
 
 export class Guard {
   constructor(scene, rng, x, z, heading = 0) {
-    this.mesh = makePerson(rng, { skin: 0xa06844, shirt: 0x2b2f36, pants: 0x1e2126 });
+    this.mesh = makePerson(rng, { skin: 0xa06844, shirt: 0x2b2f36, pants: 0x1e2126, hat: 1 });
     const gun = new THREE.Mesh(
       new THREE.BoxGeometry(0.08, 0.12, 0.42),
       new THREE.MeshStandardMaterial({ color: 0x14161a, roughness: 0.4, metalness: 0.5 }),
@@ -116,11 +116,12 @@ export class Combat {
       consider(raySphere(origin, dir, new THREE.Vector3(cx, 6, cz), r), { kind: 'wall' });
     }
 
-    // Draw the tracer and puff whether or not anything was hit.
+    // Draw the tracer and a bright impact flash whether or not anything was hit.
     const end = origin.clone().addScaledVector(dir, bestT);
     const muzzle = origin.clone().addScaledVector(dir, 0.7);
     muzzle.y -= 0.12;
     world.spawnTracer(muzzle, end, 0xffe9a0);
+    world.spawnPuff(end, 0xffe2a8, 2, 0.7);
     world.spawnPuff(end, 0xd8cfc0);
 
     if (!hit) return true;

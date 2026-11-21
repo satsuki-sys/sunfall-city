@@ -1,15 +1,16 @@
 // Sunfall City — hand-in program for the gta6-01 bounty (Node 22, stdlib only).
 //
-// The game itself lives in this directory's game/ folder: a low-poly 3D open-world
-// crime game that runs fully offline in a desktop browser. three.js is vendored
-// under game/vendor/; every other file is a hand-written ES module. You play Rook,
-// a courier in a sun-soaked coastal city: run Marisol's three jobs, steal and drive
-// anything with wheels, dodge or outrun the Sunfall PD, work the Taxi Dash, and
-// bank cash between sunsets.
+// The game itself lives in this directory's game/ folder: a low-poly 3D
+// open-world crime game that runs fully offline in a desktop browser. three.js
+// is vendored under game/vendor/; every other file is a hand-written ES
+// module. You play Rook, a courier in a sun-soaked coastal city: run Marisol's
+// three jobs, steal and drive anything with wheels, dodge or outrun the
+// Sunfall PD, work the Taxi Dash, hunt the twelve hidden sun discs, and bank
+// cash between sunsets.
 //
-// This program's only job is the hand-in: copy game/ and screenshots/ from beside
-// this file into the output directory, then write dossier.json there — the summary
-// the judge reads — using the vendored make.fun library.
+// This program's only job is the hand-in: copy game/ and screenshots/ from
+// beside this file into the output directory, then write dossier.json there —
+// the summary the judge reads — using the vendored make.fun library.
 //
 // Try the game locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:

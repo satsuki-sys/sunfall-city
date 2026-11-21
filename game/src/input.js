@@ -1,8 +1,8 @@
-// Keyboard and mouse state, sampled by the controllers once per frame. Keys are
-// tracked by event code (KeyW, ArrowUp, ...) so keyboard layout never matters.
-// Alongside the held-key set, the class keeps one-shot presses (F to enter a
-// car, H to honk) and accumulates mouse movement for the orbit camera, which
-// uses pointer lock while playing.
+// Keyboard and mouse state, sampled by the controllers once per frame. Keys
+// are tracked by event code (KeyW, ArrowUp, ...) so keyboard layout never
+// matters. Alongside the held-key set, the class keeps one-shot presses (F to
+// enter a car, H to honk) and accumulates mouse movement for the orbit
+// camera, which uses pointer lock while playing.
 
 const SWALLOWED = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'];
 

@@ -50,6 +50,7 @@ function startPlaying(fresh) {
   if (fresh) {
     clearSave();
     game.missions.restore(0);
+    game.missions.restoreDiscs([]);
     game.cash = 60;
     game.stats.taxiFares = 0;
   }
@@ -59,10 +60,18 @@ function startPlaying(fresh) {
   lockPointer();
 }
 
+/** The pause screen's running tally: cash, fares and discs so far. */
+function fillPauseStats() {
+  const story = ['First Run', 'Borrowed Sunshine', 'The Sunset Score', 'Story complete'][game.missions.storyIndex];
+  byId('pause-stats').textContent =
+    `Cash $${Math.floor(game.cash).toLocaleString('en-US')} · Taxi fares ${game.stats.taxiFares} · Sun discs ${game.missions.discsFound}/12 · ${story}`;
+}
+
 function pauseGame() {
   if (game.state !== 'playing') return;
   game.state = 'paused';
   game.saveGame();
+  fillPauseStats();
   pauseScreen.style.display = 'flex';
 }
 

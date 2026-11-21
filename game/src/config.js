@@ -1,25 +1,26 @@
-// Sunfall City — every tuning number in one place. Units are metres and seconds
-// throughout. The city is a square grid of avenues: CITY.blocks blocks per side,
-// each CITY.pitch apart, with streets CITY.roadWide wide between building plots.
-// The south edge (high z) runs into the beach.
+// Sunfall City — all of the game's tuning numbers live in this one module.
+// Units are metres and seconds throughout. The city is a square grid of
+// avenues: CITY.blocks blocks per side, CITY.pitch metres apart, with streets
+// CITY.roadWide wide between the building plots. The south edge (high z) runs
+// down to the boardwalk, the beach and the sea.
 
 export const CITY = {
   blocks: 11,          // blocks per side
   pitch: 44,           // distance between avenue centrelines
   roadWide: 14,        // street width
-  get half() { return (this.blocks * this.pitch) / 2; }, // 242: city spans -242..242
-  beachZ: 252,         // sand starts here
-  waterZ: 292,         // sea starts here
+  get half() { return (this.blocks * this.pitch) / 2; }, // 242: the grid spans -242..242
+  beachZ: 252,         // the boardwalk and sand start here
+  waterZ: 292,         // the sea starts here
 };
 
-/** Avenue centrelines — the same set of coordinates on both axes: -242, -198, ..., 242. */
+/** Avenue centrelines — the same coordinates on both axes: -242, -198, ..., 242. */
 export function avenueLines() {
   const lines = [];
   for (let i = 0; i <= CITY.blocks; i += 1) lines.push(-CITY.half + i * CITY.pitch);
   return lines;
 }
 
-/** Centres of the block plots between the avenues: -220, -176, ..., 220. */
+/** Centres of the block plots that sit between the avenues: -220, -176, ..., 220. */
 export function blockCentres() {
   const centres = [];
   for (let i = 0; i < CITY.blocks; i += 1) centres.push(-CITY.half + CITY.pitch / 2 + i * CITY.pitch);
@@ -31,7 +32,7 @@ export const PLAYER = {
   walkSpeed: 5.2,
   sprintSpeed: 8.6,
   health: 100,
-  reachCar: 3.4,       // how close to a car door the F key works
+  reachCar: 3.4,       // how close to a car door the F key still works
 };
 
 export const CAR_TYPES = {
@@ -52,6 +53,14 @@ export const WANTED = {
   max: 5,
   decaySeconds: 26,    // quiet time, with no fresh crime, before one star fades
   policeByStars: [0, 1, 2, 3, 4, 5],
+};
+
+/** Hidden sun discs: golden collectibles scattered over the city's corners. */
+export const PACKAGES = {
+  count: 12,
+  reward: 25,          // cash for each disc picked up
+  fullBonus: 250,      // extra cash for completing the set
+  radius: 2.6,         // pickup distance from the player's position
 };
 
 export const SAVE_KEY = 'sunfall-city.save.v1';
