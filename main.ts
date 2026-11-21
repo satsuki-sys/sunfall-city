@@ -1,58 +1,57 @@
 // Sunfall City — the hand-in program for make.fun's gta6-01 bounty.
-// Runtime: Node 22, standard library only.
 //
-// The game itself lives in the game/ folder beside this file: a low-poly
-// 3D open-world crime game that runs entirely offline in a desktop
-// browser. three.js is vendored under game/vendor/, and every other file
-// the game loads is a hand-written ES module. You play Rook, a courier in
-// a coastal city held at golden hour: run Marisol's three jobs, steal and
-// drive anything on wheels, dodge or outrun the Sunfall PD, work the Taxi
-// Dash, hunt down the twelve hidden sun discs, and bank cash between
-// sunsets.
+// The game itself is the static site under game/ (open game/index.html in a
+// browser and play; nothing is built and nothing is fetched). This program
+// is the courier: it copies game/ and screenshots/ from beside this file
+// into the output directory and writes dossier.json there with the kit's
+// vendored buildDossier, byte for byte what the scorer recomputes. Outside
+// the grader, MAKEFUN_OUTPUT_DIR names the output directory:
 //
-// This program does exactly one thing — the hand-in. It copies game/ and
-// screenshots/ from beside itself into the output directory and then
-// writes dossier.json there, the summary the judge reads, using the
-// vendored make.fun library.
-//
-// To try the game locally: `node serve.ts`, then open http://localhost:8080.
-// Away from the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-// (Node 22 runs this .ts file directly, via its built-in type stripping.)
+//
+// Node 22, standard library only — nothing is installed before it runs, and
+// two runs over the same tree write the same bytes. (Verified locally by
+// running it twice into two directories and diffing the trees.)
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
 
-const rootDir = fileURLToPath(new URL('.', import.meta.url));
-const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output'; // the grader's mount
+const here = fileURLToPath(new URL('.', import.meta.url));
+const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-// Copy the playable game into the output directory, folders and all.
-mkdirSync(outDir, { recursive: true });
-cpSync(join(rootDir, 'game'), join(outDir, 'game'), { recursive: true });
+// The scorer's own caps (the kit's reference/gate.json), passed to the
+// dossier builder so an entry the scorer would refuse is refused here too:
+// at most 4 screenshots of 256 KiB, at most 993 files and 48 MiB under
+// game/, no game path over 1000 bytes, dossier text capped at 160 KiB.
+const GATE = {
+  text_max_bytes: 163840,
+  screenshots: { max: 4, max_bytes: 262144 },
+  game_max_files: 993,
+  game_max_bytes: 50331648,
+  game_path_max_bytes: 1000,
+};
 
-// Copy the screenshots. The folder itself is expected to exist in the
-// output; its contents are optional, so the copy is guarded on the source.
-mkdirSync(join(outDir, 'screenshots'), { recursive: true });
-if (existsSync(join(rootDir, 'screenshots'))) {
-  cpSync(join(rootDir, 'screenshots'), join(outDir, 'screenshots'), { recursive: true });
+function countFiles(dir: string): number {
+  let n = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    n += entry.isDirectory() ? countFiles(join(dir, entry.name)) : 1;
+  }
+  return n;
 }
 
-// Write the dossier. The limits below mirror the scorer's own gate
-// (reference/gate.json): text_max_bytes shapes how many bytes are written,
-// while the rest make this program refuse anything the scorer would refuse
-// anyway — more than 4 screenshots or one larger than 256 KiB, more than
-// 993 files or 48 MiB under game/, or a single game/ path over 1000 bytes.
-// (game/ is counted next to /output's own 1000-entry cap, which also covers
-// its screenshots/ folder and dossier.json.)
-writeFileSync(
-  join(outDir, 'dossier.json'),
-  buildDossier(outDir, {
-    text_max_bytes: 163840,
-    screenshots: { max: 4, max_bytes: 262144 },
-    game_max_files: 993,
-    game_max_bytes: 50331648,
-    game_path_max_bytes: 1000,
-  }),
-);
+mkdirSync(out, { recursive: true });
+cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
+mkdirSync(join(out, 'screenshots'), { recursive: true });
+if (existsSync(join(here, 'screenshots'))) {
+  cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+}
+
+writeFileSync(join(out, 'dossier.json'), buildDossier(out, GATE));
+
+const gameFiles = countFiles(join(out, 'game'));
+const shots = existsSync(join(out, 'screenshots'))
+  ? readdirSync(join(out, 'screenshots')).length
+  : 0;
+console.log(`sunfall-city: handed in ${gameFiles} game files and ${shots} screenshots to ${out}`);

@@ -1,201 +1,193 @@
-// Every sound in Sunfall City is synthesised live with WebAudio — the
-// game ships no audio files at all. Underneath everything drifts a soft
-// island pad; the rest is a kit of small oscillator and noise recipes: an
-// engine with audible gear steps, tire screech, a two-tone siren, horns,
-// gunshots and coin chimes. Nothing sounds until start() runs from a user
-// gesture, and every method degrades quietly when audio is unavailable —
-// headless screenshot runs never start it.
+// audio.js — every sound in Sunfall City is synthesized live with WebAudio;
+// there are no audio files. A SoundEngine owns one AudioContext and offers
+// small one-shot voices (pickup jingle, gunshot, bump, horn, click) plus two
+// continuous voices the world drives every frame: the car engine, whose
+// oscillator climbs a five-step gearbox as speed rises and whose lowpass
+// filter opens under load, and a tire screech that fades in while the
+// handbrake is held through a slide. A distant siren voice swells with the
+// nearest police car.
 
-export class SoundBank {
+export class SoundEngine {
   constructor() {
-    this.ctx = null;
+    this.ctx = null;      // created lazily on the first user gesture
     this.master = null;
-    this.engineOsc = null;
-    this.engineFilter = null;
-    this.engineGain = null;
-    this.engineGear = -1;
-    this.screechGain = null;
-    this.sirenOsc = null;
-    this.sirenGain = null;
-    this.sirenLFO = null;
+    this.engineNodes = null;
+    this.screechNodes = null;
+    this.sirenNodes = null;
+    this.gear = 0;
   }
 
-  start() {
-    if (this.ctx) { this.ctx.resume(); return; }
+  // Browsers refuse to start an AudioContext before a gesture; the title
+  // screen buttons call this. Safe to call repeatedly.
+  unlock() {
+    if (this.ctx) {
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+      return;
+    }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     this.ctx = new AC();
     this.master = this.ctx.createGain();
     this.master.gain.value = 0.5;
     this.master.connect(this.ctx.destination);
-    this.#pad();
-    this.#engine();
-    this.#screech();
-    this.#siren();
   }
 
-  /** Two detuned triangles behind a slowly breathing filter: dusk chords. */
-  #pad() {
-    const ctx = this.ctx;
-    const gain = ctx.createGain();
-    gain.gain.value = 0.035;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 700;
-    filter.connect(gain).connect(this.master);
-    const chord = [196, 246.9, 293.7];
-    chord.forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      osc.type = 'triangle';
-      osc.frequency.value = freq;
-      osc.detune.value = i * 4 - 4;
-      osc.connect(filter);
-      osc.start();
-    });
-    const lfo = ctx.createOscillator();
-    lfo.frequency.value = 0.07;
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 220;
-    lfo.connect(lfoGain).connect(filter.frequency);
-    lfo.start();
+  get ready() {
+    return !!this.ctx;
   }
 
-  /** One sawtooth through a lowpass: the engine the gears will play. */
-  #engine() {
-    const ctx = this.ctx;
-    this.engineOsc = ctx.createOscillator();
-    this.engineOsc.type = 'sawtooth';
-    this.engineOsc.frequency.value = 55;
-    this.engineFilter = ctx.createBiquadFilter();
-    this.engineFilter.type = 'lowpass';
-    this.engineFilter.frequency.value = 420;
-    this.engineGain = ctx.createGain();
-    this.engineGain.gain.value = 0;
-    this.engineOsc.connect(this.engineFilter).connect(this.engineGain).connect(this.master);
-    this.engineOsc.start();
-  }
-
-  /**
-   * Drive the engine with a speed ratio 0..1, or pass null to let it fall
-   * silent. The rev range is sliced into five gears: pitch climbs inside
-   * a gear, then drops as the next one engages — the arcade gear step.
-   */
-  engine(speedRatio) {
-    if (!this.ctx || !this.engineOsc) return;
+  // A short burst of filtered noise or a tone blip; the building block for
+  // the one-shot voices below.
+  blip({ type = 'square', from = 440, to = from, dur = 0.12, gain = 0.2, noise = false }) {
+    if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    if (speedRatio === null) {
-      this.engineGain.gain.setTargetAtTime(0, t, 0.1);
-      this.engineGear = -1;
-      return;
+    const out = this.ctx.createGain();
+    out.gain.setValueAtTime(gain, t);
+    out.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    out.connect(this.master);
+    if (noise) {
+      const len = Math.max(1, (dur * this.ctx.sampleRate) | 0);
+      const buffer = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      const src = this.ctx.createBufferSource();
+      src.buffer = buffer;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = from;
+      src.connect(filter).connect(out);
+      src.start(t);
+    } else {
+      const osc = this.ctx.createOscillator();
+      osc.type = type;
+      osc.frequency.setValueAtTime(from, t);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(20, to), t + dur);
+      osc.connect(out);
+      osc.start(t);
+      osc.stop(t + dur + 0.02);
     }
-    const GEARS = 5;
-    const scaled = Math.min(0.999, Math.max(0, speedRatio)) * GEARS;
-    const gear = Math.floor(scaled);
-    const sweep = scaled - gear;
-    const freq = 52 + gear * 17 + sweep * 34;
-    // A change of gear moves pitch quicker, so the step down reads as a step.
-    const glide = gear !== this.engineGear ? 0.03 : 0.06;
-    this.engineGear = gear;
-    this.engineOsc.frequency.setTargetAtTime(freq, t, glide);
-    this.engineFilter.frequency.setTargetAtTime(380 + speedRatio * 950, t, 0.09);
-    this.engineGain.gain.setTargetAtTime(0.05 + speedRatio * 0.05, t, 0.08);
   }
 
-  /** A loop of filtered noise, held silent until screech() opens it up. */
-  #screech() {
-    const ctx = this.ctx;
-    const len = ctx.sampleRate;
-    const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < len; i += 1) data[i] = Math.random() * 2 - 1;
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    src.loop = true;
-    const band = ctx.createBiquadFilter();
-    band.type = 'bandpass';
-    band.frequency.value = 950;
-    band.Q.value = 2.4;
-    this.screechGain = ctx.createGain();
-    this.screechGain.gain.value = 0;
-    src.connect(band).connect(this.screechGain).connect(this.master);
-    src.start();
+  pickup() { // two bright notes, the sun disc jingle
+    this.blip({ type: 'sine', from: 880, dur: 0.1, gain: 0.22 });
+    setTimeout(() => this.blip({ type: 'sine', from: 1318, dur: 0.16, gain: 0.22 }), 70);
   }
 
-  /** level 0..1 — how loudly the tires object to a handbrake slide. */
-  screech(level) {
-    if (!this.ctx || !this.screechGain) return;
-    this.screechGain.gain.setTargetAtTime(level * 0.06, this.ctx.currentTime, 0.05);
+  cash() { // a till-like double ding when money lands
+    this.blip({ type: 'triangle', from: 1568, dur: 0.09, gain: 0.18 });
+    setTimeout(() => this.blip({ type: 'triangle', from: 2093, dur: 0.14, gain: 0.18 }), 60);
   }
 
-  /** A triangle whose pitch an LFO rocks: the classic two-tone wail. */
-  #siren() {
-    const ctx = this.ctx;
-    this.sirenOsc = ctx.createOscillator();
-    this.sirenOsc.type = 'triangle';
-    this.sirenOsc.frequency.value = 800;
-    this.sirenLFO = ctx.createOscillator();
-    this.sirenLFO.frequency.value = 0.65;
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 260;
-    this.sirenLFO.connect(lfoGain).connect(this.sirenOsc.frequency);
-    this.sirenGain = ctx.createGain();
-    this.sirenGain.gain.value = 0;
-    this.sirenOsc.connect(this.sirenGain).connect(this.master);
-    this.sirenOsc.start();
-    this.sirenLFO.start();
-  }
-
-  /** level 0..1 — how present the closest police siren should sound. */
-  siren(level) {
-    if (!this.ctx || !this.sirenGain) return;
-    this.sirenGain.gain.setTargetAtTime(level * 0.055, this.ctx.currentTime, 0.2);
-  }
-
-  /** The shared one-shot: glide freqA to freqB under a fast decay. */
-  #blip(freqA, freqB, seconds, type = 'square', volume = 0.12) {
-    if (!this.ctx) return;
-    const ctx = this.ctx;
-    const osc = ctx.createOscillator();
-    osc.type = type;
-    const gain = ctx.createGain();
-    const t = ctx.currentTime;
-    osc.frequency.setValueAtTime(freqA, t);
-    osc.frequency.exponentialRampToValueAtTime(Math.max(30, freqB), t + seconds);
-    gain.gain.setValueAtTime(volume, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + seconds);
-    osc.connect(gain).connect(this.master);
-    osc.start(t);
-    osc.stop(t + seconds + 0.02);
-  }
-
-  horn() { this.#blip(370, 340, 0.22, 'square', 0.07); }
-  pickup() { this.#blip(660, 990, 0.14, 'sine', 0.14); }
-  /** A brighter two-note sparkle, kept for the sun discs alone. */
-  collect() {
-    this.#blip(1040, 1560, 0.12, 'sine', 0.13);
-    setTimeout(() => this.#blip(1320, 1980, 0.16, 'sine', 0.11), 60);
-  }
-  cash() { this.#blip(880, 1320, 0.16, 'sine', 0.13); setTimeout(() => this.#blip(1100, 1560, 0.18, 'sine', 0.1), 70); }
-  bump() { this.#blip(120, 55, 0.16, 'triangle', 0.2); }
-  door() { this.#blip(210, 140, 0.09, 'triangle', 0.12); }
-  fail() { this.#blip(300, 130, 0.4, 'sawtooth', 0.1); }
-
-  /** A gunshot: filtered noise bursting under a fast-falling envelope. */
   shot() {
-    if (!this.ctx) return;
-    const ctx = this.ctx;
-    const len = Math.floor(ctx.sampleRate * 0.14);
-    const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < len; i += 1) data[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    const filter = ctx.createBiquadFilter();
+    this.blip({ noise: true, from: 1800, dur: 0.09, gain: 0.3 });
+    this.blip({ type: 'sawtooth', from: 220, to: 60, dur: 0.08, gain: 0.15 });
+  }
+
+  bump(strength = 1) {
+    this.blip({ noise: true, from: 300, dur: 0.14, gain: 0.16 * strength });
+    this.blip({ type: 'sine', from: 90, to: 45, dur: 0.16, gain: 0.22 * strength });
+  }
+
+  horn() {
+    this.blip({ type: 'square', from: 370, dur: 0.28, gain: 0.12 });
+    this.blip({ type: 'square', from: 466, dur: 0.28, gain: 0.1 });
+  }
+
+  click() {
+    this.blip({ type: 'sine', from: 660, dur: 0.05, gain: 0.12 });
+  }
+
+  toast() {
+    this.blip({ type: 'sine', from: 1046, dur: 0.08, gain: 0.1 });
+  }
+
+  // --- continuous voices -------------------------------------------------
+
+  startEngine() {
+    if (!this.ctx || this.engineNodes) return;
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = 55;
+    const sub = this.ctx.createOscillator();
+    sub.type = 'square';
+    sub.frequency.value = 28;
+    const filter = this.ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.value = 2600;
-    const gain = ctx.createGain();
-    gain.gain.value = 0.22;
-    src.connect(filter).connect(gain).connect(this.master);
-    src.start();
+    filter.frequency.value = 320;
+    filter.Q.value = 2;
+    const gain = this.ctx.createGain();
+    gain.gain.value = 0.0;
+    osc.connect(filter); sub.connect(filter);
+    filter.connect(gain).connect(this.master);
+    osc.start(); sub.start();
+    this.engineNodes = { osc, sub, filter, gain };
+  }
+
+  // speed01 is 0..1 of the car's top speed; load is throttle pressure.
+  // The five gears divide the range; each gear's rpm sweeps its own band,
+  // so the note drops at every shift, like a real gearbox.
+  setEngine(speed01, load) {
+    if (!this.engineNodes) return;
+    const { osc, sub, filter, gain } = this.engineNodes;
+    const t = this.ctx.currentTime;
+    const gearEdges = [0, 0.18, 0.36, 0.55, 0.76, 1.01];
+    let gear = 0;
+    while (gear < 4 && speed01 > gearEdges[gear + 1]) gear++;
+    this.gear = gear;
+    const inGear = (speed01 - gearEdges[gear]) / (gearEdges[gear + 1] - gearEdges[gear]);
+    const rpm = 0.25 + inGear * 0.75;               // 0.25..1 within the gear
+    const freq = 50 + rpm * 130;                    // 82..180 Hz fundamental
+    osc.frequency.setTargetAtTime(freq, t, 0.05);
+    sub.frequency.setTargetAtTime(freq / 2, t, 0.05);
+    filter.frequency.setTargetAtTime(280 + load * 900 + rpm * 500, t, 0.08);
+    gain.gain.setTargetAtTime(0.05 + load * 0.05 + rpm * 0.02, t, 0.09);
+  }
+
+  stopEngine() {
+    if (!this.engineNodes) return;
+    const { osc, sub, gain } = this.engineNodes;
+    gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
+    const nodes = this.engineNodes;
+    setTimeout(() => { try { nodes.osc.stop(); nodes.sub.stop(); } catch { /* already stopped */ } }, 200);
+    this.engineNodes = null;
+  }
+
+  setScreech(amount) {
+    if (!this.ctx) return;
+    if (!this.screechNodes) {
+      const len = this.ctx.sampleRate | 0;
+      const buffer = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      const src = this.ctx.createBufferSource();
+      src.buffer = buffer; src.loop = true;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass'; filter.frequency.value = 950; filter.Q.value = 6;
+      const gain = this.ctx.createGain(); gain.gain.value = 0;
+      src.connect(filter).connect(gain).connect(this.master);
+      src.start();
+      this.screechNodes = { src, gain };
+    }
+    this.screechNodes.gain.gain.setTargetAtTime(
+      Math.min(0.14, amount * 0.14), this.ctx.currentTime, 0.06);
+  }
+
+  // A two-tone siren whose volume follows the nearest police car (0..1).
+  setSiren(level) {
+    if (!this.ctx) return;
+    if (!this.sirenNodes) {
+      const osc = this.ctx.createOscillator();
+      osc.type = 'triangle'; osc.frequency.value = 700;
+      const lfo = this.ctx.createOscillator();
+      lfo.frequency.value = 0.7;
+      const lfoGain = this.ctx.createGain(); lfoGain.gain.value = 160;
+      lfo.connect(lfoGain).connect(osc.frequency);
+      const gain = this.ctx.createGain(); gain.gain.value = 0;
+      osc.connect(gain).connect(this.master);
+      osc.start(); lfo.start();
+      this.sirenNodes = { osc, lfo, gain };
+    }
+    this.sirenNodes.gain.gain.setTargetAtTime(
+      Math.min(0.06, level * 0.06), this.ctx.currentTime, 0.15);
   }
 }

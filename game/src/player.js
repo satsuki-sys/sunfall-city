@@ -1,210 +1,133 @@
-// The player: a courier in a teal shirt. On foot they walk and sprint with
-// swinging arms, turn with the camera, and collide with walls and cars; F
-// climbs into the nearest car — hot-wiring a stranger's ride is a crime
-// when somebody sees it — and F again climbs back out. The camera rides a
-// soft orbit rig that follows behind, pulls in rather than clipping
-// through roofs, leans into a drive with a look-ahead and a speed FOV
-// kick, and doubles as the gun's aim.
+// player.js — Rook, the player character: a low-poly figure in a teal shirt
+// and a straw sun hat, moved on foot by the world each frame. This module
+// owns the figure, its walk cycle, and the circle-versus-building collision
+// the whole game shares (cars use the same push-out). The camera lives in
+// world.js; the player only walks, turns to face the walk, and stays out of
+// the walls.
 
 import * as THREE from 'three';
-import { CITY, PLAYER } from './config.js';
-import { angleDelta, clamp, dist2d } from './random.js';
-import { makePerson } from './pedestrians.js';
-import { groundHeightAt } from './city.js';
-import { resolveCircle, stepCar } from './vehicles.js';
+import { TUNE, CITY } from './config.js';
 
-export class Player {
-  constructor(scene, rng) {
-    this.mesh = makePerson(rng, { skin: 0xd99e6a, shirt: 0x1f8a8c, pants: 0x2f3542 });
-    scene.add(this.mesh);
-    this.x = -120;
-    this.z = -108;
-    this.heading = Math.PI * 0.75;
-    this.phase = 0;
-    this.speedNow = 0;
-    this.car = null;
-  }
-
-  get pos() { return { x: this.x, z: this.z }; }
-
-  enterCar(car, world) {
-    this.car = car;
-    car.driver = 'player';
-    this.mesh.visible = false;
-    world.audio.door();
-  }
-
-  exitCar(world) {
-    const car = this.car;
-    if (!car) return;
-    // Step out on the car's left, pushed clear of whatever wall is there.
-    const sideX = Math.cos(car.heading);
-    const sideZ = -Math.sin(car.heading);
-    this.x = car.x + sideX * 1.8;
-    this.z = car.z + sideZ * 1.8;
-    [this.x, this.z] = resolveCircle(this.x, this.z, PLAYER.radius, world.colliders);
-    this.heading = car.heading;
-    car.driver = 'parked';
-    car.speed = 0;
-    this.car = null;
-    this.mesh.visible = true;
-    world.audio.screech(0);
-    world.audio.door();
-  }
-
-  update(dt, world) {
-    const input = world.input;
-    if (this.car) {
-      this.#drive(dt, world, input);
-      return;
-    }
-    this.#walk(dt, world, input);
-  }
-
-  /** Driving: the shared stepCar physics, fed by the driving keys. */
-  #drive(dt, world, input) {
-    const car = this.car;
-    const throttle = input.axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp']);
-    const steer = input.axis(['KeyD', 'ArrowRight'], ['KeyA', 'ArrowLeft']);
-    const handbrake = input.down('Space');
-    stepCar(car, { throttle, steer, brake: handbrake }, dt, world.colliders, world.cars);
-    this.x = car.x;
-    this.z = car.z;
-    this.heading = car.heading;
-    this.speedNow = Math.abs(car.speed);
-    world.audio.engine(clamp(Math.abs(car.speed) / car.spec.maxSpeed, 0, 1));
-    // The tires protest when the handbrake is pulled at speed.
-    const sliding = handbrake && Math.abs(car.speed) > 8;
-    world.audio.screech(sliding ? clamp(Math.abs(car.speed) / car.spec.maxSpeed, 0, 1) : 0);
-    if (input.justPressed('KeyH')) world.audio.horn();
-    if (car.lastImpact > 9 && Math.abs(car.speed) < 4) {
-      world.shake(0.25);
-      world.audio.bump();
+// Push a circle at pos (a Vector3, y ignored) out of every building box it
+// overlaps. Returns true if it touched anything, which callers use for
+// impact sounds and damage.
+export function resolveCircleCollisions(pos, radius, colliders) {
+  let touched = false;
+  for (const b of colliders) {
+    const nx = Math.max(b.minX, Math.min(pos.x, b.maxX));
+    const nz = Math.max(b.minZ, Math.min(pos.z, b.maxZ));
+    const dx = pos.x - nx, dz = pos.z - nz;
+    const d2 = dx * dx + dz * dz;
+    if (d2 > radius * radius) continue;
+    touched = true;
+    if (d2 > 1e-8) {
+      const d = Math.sqrt(d2);
+      pos.x = nx + (dx / d) * radius;
+      pos.z = nz + (dz / d) * radius;
+    } else {
+      // Centre inside the box: leave by the nearest face.
+      const left = pos.x - b.minX, right = b.maxX - pos.x;
+      const top = pos.z - b.minZ, bottom = b.maxZ - pos.z;
+      const m = Math.min(left, right, top, bottom);
+      if (m === left) pos.x = b.minX - radius;
+      else if (m === right) pos.x = b.maxX + radius;
+      else if (m === top) pos.z = b.minZ - radius;
+      else pos.z = b.maxZ + radius;
     }
   }
-
-  /** On foot: movement is relative to the camera's ground-projected facing. */
-  #walk(dt, world, input) {
-    world.audio.engine(null);
-    world.audio.screech(0);
-    const camYaw = world.cameraRig.yaw;
-    const fwd = input.axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp']);
-    const strafe = input.axis(['KeyA', 'ArrowLeft'], ['KeyD', 'ArrowRight']);
-    let mx = 0;
-    let mz = 0;
-    if (fwd !== 0 || strafe !== 0) {
-      const sin = Math.sin(camYaw);
-      const cos = Math.cos(camYaw);
-      mx = sin * fwd - cos * strafe;
-      mz = cos * fwd + sin * strafe;
-      const len = Math.hypot(mx, mz);
-      mx /= len;
-      mz /= len;
-    }
-    const sprint = input.down('ShiftLeft', 'ShiftRight');
-    const speed = sprint ? PLAYER.sprintSpeed : PLAYER.walkSpeed;
-    const moving = mx !== 0 || mz !== 0;
-    this.speedNow = moving ? speed : 0;
-    if (moving) {
-      this.x += mx * speed * dt;
-      this.z += mz * speed * dt;
-      // Face the movement — or the camera, while the mouse is aiming.
-      const want = input.mouseDown ? camYaw : Math.atan2(mx, mz);
-      this.heading += clamp(angleDelta(this.heading, want), -10 * dt, 10 * dt);
-      this.phase += dt * (sprint ? 11 : 8);
-    }
-    [this.x, this.z] = resolveCircle(this.x, this.z, PLAYER.radius, world.colliders);
-    // Cars are solid too: slide out of any overlap.
-    for (const car of world.cars) {
-      const d = dist2d(this.x, this.z, car.x, car.z);
-      const min = car.spec.len * 0.42;
-      if (d > 0.01 && d < min) {
-        this.x += ((this.x - car.x) / d) * (min - d);
-        this.z += ((this.z - car.z) / d) * (min - d);
-      }
-    }
-    // The pier is walkable deck over the water; elsewhere the sand ends play.
-    const onPier = Math.abs(this.x - (-88)) < 6 && this.z > CITY.waterZ - 6;
-    this.x = clamp(this.x, -256, 256);
-    this.z = clamp(this.z, -256, onPier ? 336 : 300);
-    const parts = this.mesh.userData.parts;
-    const swing = moving ? Math.sin(this.phase) * 0.55 : 0;
-    parts.legL.rotation.x = swing;
-    parts.legR.rotation.x = -swing;
-    parts.armL.rotation.x = -swing * 0.8;
-    parts.armR.rotation.x = input.mouseDown ? -1.35 : swing * 0.8; // raised to aim while firing
-    const bob = moving ? Math.abs(Math.sin(this.phase)) * 0.04 : 0;
-    this.mesh.position.set(this.x, groundHeightAt(this.x, this.z) + bob, this.z);
-    this.mesh.rotation.y = this.heading;
-  }
+  return touched;
 }
 
-export class CameraRig {
-  constructor(camera) {
-    this.camera = camera;
-    this.yaw = Math.PI * 0.75;
-    this.pitch = 0.32;
-    this.dist = 8;
-    this.shakeTime = 0;
-    this.forward = new THREE.Vector3(0, 0, 1);
-    this.baseFov = camera.fov;
+// Keep a position inside the playable ground: the city, the beach, and the
+// pier deck — but not the open sea.
+export function clampToWorld(pos, radius) {
+  const onPier = Math.abs(pos.x - CITY.pierX) < 5.4 && pos.z > CITY.beachZ;
+  pos.x = Math.max(CITY.minX - 60, Math.min(CITY.maxX + 60, pos.x));
+  pos.z = Math.max(CITY.minZ - 10, pos.z);
+  const zMax = onPier ? CITY.pierEndZ - 1 : CITY.waterZ + 3;
+  pos.z = Math.min(zMax, pos.z);
+  if (!onPier && pos.z > CITY.waterZ) pos.z = CITY.waterZ; // the shoreline
+  pos.x = Math.max(-268, Math.min(268, pos.x));
+  return pos;
+}
+
+export class Player {
+  constructor(scene) {
+    this.group = new THREE.Group();
+    const skin = new THREE.MeshStandardMaterial({ color: 0xc98a5e, roughness: 0.8 });
+    const shirt = new THREE.MeshStandardMaterial({ color: 0x1f7a72, roughness: 0.9 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x232326, roughness: 1 });
+    this.legL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.74, 0.21), dark);
+    this.legL.position.set(-0.12, 0.37, 0);
+    this.legR = this.legL.clone();
+    this.legR.position.x = 0.12;
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.64, 0.32), shirt);
+    torso.position.y = 1.05;
+    torso.castShadow = true;
+    const armR = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.6, 0.17), shirt);
+    armR.position.set(0.37, 1.02, 0.05);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), skin);
+    head.position.y = 1.6;
+    head.castShadow = true;
+    const hatMat = new THREE.MeshStandardMaterial({ color: 0xe8d9ae, roughness: 1 });
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.38, 0.05, 14), hatMat);
+    brim.position.y = 1.74;
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.17, 14), hatMat);
+    top.position.y = 1.83;
+    // The pistol, carried low in the right hand.
+    const pistol = new THREE.Mesh(
+      new THREE.BoxGeometry(0.07, 0.12, 0.3),
+      new THREE.MeshStandardMaterial({ color: 0x17181c, roughness: 0.4, metalness: 0.6 }));
+    pistol.position.set(0.37, 0.78, 0.22);
+    this.group.add(this.legL, this.legR, torso, armR, head, brim, top, pistol);
+    scene.add(this.group);
+
+    this.heading = Math.PI; // facing north at the spawn
+    this.speedNow = 0;
+    this.walkPhase = 0;
   }
 
-  shake(t) { this.shakeTime = Math.max(this.shakeTime, t); }
+  get pos() { return this.group.position; }
 
-  update(dt, world) {
-    const input = world.input;
-    if (world.state === 'playing') {
-      this.yaw -= input.mouseDX * 0.0032;
-      this.pitch = clamp(this.pitch + input.mouseDY * 0.0028, 0.04, 1.25);
-      this.dist = clamp(this.dist + input.wheel * 1.2, 5, 14);
+  setPosition(x, z, heading) {
+    this.group.position.set(x, 0, z);
+    if (heading !== undefined) this.heading = heading;
+    this.group.rotation.y = this.heading;
+  }
+
+  // Turn the figure to look along a world-space direction.
+  faceTowards(x, z) {
+    this.heading = Math.atan2(x - this.pos.x, z - this.pos.z);
+    this.group.rotation.y = this.heading;
+  }
+
+  // Walk one step. moveX/moveZ is a normalized wish direction in world
+  // space (already camera-relative); sprint picks the faster pace. Building
+  // push-out and the world clamp are applied here.
+  update(dt, moveX, moveZ, sprint, colliders) {
+    const moving = Math.abs(moveX) > 0.01 || Math.abs(moveZ) > 0.01;
+    const speed = sprint ? TUNE.sprintSpeed : TUNE.walkSpeed;
+    this.speedNow = moving ? speed : 0;
+    if (moving) {
+      const target = Math.atan2(moveX, moveZ);
+      let diff = target - this.heading;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      this.heading += diff * Math.min(1, dt * 12);
+      this.group.position.x += moveX * speed * dt;
+      this.group.position.z += moveZ * speed * dt;
+      this.walkPhase += dt * speed * 2.6;
     }
-    const driving = !!world.playerVehicle;
-    const target = new THREE.Vector3(
-      world.playerPos.x,
-      (world.playerVehicle ? world.playerVehicle.mesh.position.y + 1.3 : groundHeightAt(world.playerPos.x, world.playerPos.z) + 1.6),
-      world.playerPos.z,
-    );
-    // Driving, the camera looks a little way up the road the car is
-    // actually travelling: the frame leads the car instead of chasing it.
-    if (driving) {
-      const car = world.playerVehicle;
-      target.x += Math.sin(car.heading) * car.speed * 0.16;
-      target.z += Math.cos(car.heading) * car.speed * 0.16;
-    }
-    // Speed widens the lens a touch: 62° at a crawl, about 71° flat out.
-    const speedRatio = driving ? clamp(Math.abs(world.playerVehicle.speed) / world.playerVehicle.spec.maxSpeed, 0, 1) : 0;
-    const wantFov = this.baseFov + speedRatio * 9;
-    if (Math.abs(this.camera.fov - wantFov) > 0.02) {
-      this.camera.fov += (wantFov - this.camera.fov) * Math.min(1, dt * 3.5 + 0.02);
-      this.camera.updateProjectionMatrix();
-    }
-    const wantDist = driving ? Math.max(this.dist, 9.5) : this.dist;
-    const back = new THREE.Vector3(
-      -Math.sin(this.yaw) * Math.cos(this.pitch),
-      Math.sin(this.pitch),
-      -Math.cos(this.yaw) * Math.cos(this.pitch),
-    );
-    // Should the full orbit distance land inside a building, pull in.
-    let used = wantDist;
-    for (const scale of [1, 0.62, 0.35]) {
-      used = wantDist * scale;
-      const cx = target.x + back.x * used;
-      const cz = target.z + back.z * used;
-      const inside = world.colliders.some((c) => cx > c.minX - 0.4 && cx < c.maxX + 0.4 && cz > c.minZ - 0.4 && cz < c.maxZ + 0.4);
-      if (!inside) break;
-    }
-    const pos = target.clone().addScaledVector(back, used);
-    pos.y = Math.max(pos.y, groundHeightAt(pos.x, pos.z) + 0.55);
-    const k = dt <= 0 ? 0 : Math.min(1, 1 - Math.pow(0.0001, dt)); // a fast, smooth follow
-    this.camera.position.lerp(pos, world.snapCamera ? 1 : k);
-    world.snapCamera = false;
-    if (this.shakeTime > 0) {
-      this.shakeTime -= dt;
-      this.camera.position.x += (Math.random() - 0.5) * 0.14;
-      this.camera.position.y += (Math.random() - 0.5) * 0.1;
-    }
-    this.camera.lookAt(target);
-    this.forward = target.clone().sub(this.camera.position).normalize();
+    resolveCircleCollisions(this.group.position, TUNE.playerRadius, colliders);
+    clampToWorld(this.group.position, TUNE.playerRadius);
+    this.group.rotation.y = this.heading;
+    const swing = moving ? Math.sin(this.walkPhase) * 0.55 : 0;
+    this.legL.rotation.x = swing;
+    this.legR.rotation.x = -swing;
+    this.group.position.y = moving ? Math.abs(Math.sin(this.walkPhase)) * 0.05 : 0;
+  }
+
+  setVisible(v) {
+    this.group.visible = v;
   }
 }

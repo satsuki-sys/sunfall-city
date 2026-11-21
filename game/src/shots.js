@@ -1,138 +1,67 @@
-// Screenshot staging, behind ?shot=cover|drive|chase|mission. Each scene
-// is posed inside the same seeded world, then the real simulation is
-// stepped for a couple of seconds at a small render size — headless
-// staging stays fast that way — before the frame is restored to full
-// size, rendered once and flagged ready. The screenshots are the game's
-// own renders; nothing is composited into them.
+// shots.js — the deterministic screenshot stagings. Loading the game with
+// ?shot=<name>&seed=7 skips the title screen and poses a living scene for
+// each of the four screenshots in shots.json: the cover (on foot downtown,
+// first objective up), the drive (crossing town in a car), the chase (three
+// stars, the Sunset Score escape) and the mission (at the warehouse on the
+// delivery run). The scenes are real game state — traffic flows, the discs
+// spin, the police give chase — only the opening positions are arranged.
 
-import { POIS } from './city.js';
-import { createCar } from './vehicles.js';
+import { PLACES } from './config.js';
+import { freshSave } from './save.js';
 
-/** Step the simulation without rendering; `pin` re-asserts staged state per step. */
-function step(game, seconds, pin = null) {
-  const steps = Math.round(seconds * 30);
-  game.deferRender = true;
-  for (let i = 0; i < steps; i += 1) {
-    if (pin) pin();
-    game.update(1 / 30);
-  }
-  game.deferRender = false;
-}
-
-function shrink(game) {
-  game.renderer.setSize(320, 200, false);
-  game.camera.aspect = 320 / 200;
-  game.camera.updateProjectionMatrix();
-}
-
-function restore(game) {
-  game.renderer.setSize(innerWidth, innerHeight);
-  game.camera.aspect = innerWidth / innerHeight;
-  game.camera.updateProjectionMatrix();
-}
-
-function placePlayer(game, x, z, heading) {
-  game.player.x = x;
-  game.player.z = z;
-  game.player.heading = heading;
-  game.snapCamera = true;
-}
-
+// Pose the player in a specific car at a specific place, rolling.
 function putPlayerInCar(game, car, x, z, heading, speed) {
-  car.x = x;
-  car.z = z;
-  car.heading = heading;
+  car.setPosition(x, z, heading);
   car.speed = speed;
-  car.mesh.position.set(x, 0, z);
-  car.mesh.rotation.y = heading;
-  game.player.enterCar(car, game);
+  game.playerCar = car;
   game.lastCar = car;
+  game.player.setVisible(false);
+  game.camYaw = heading;
+  game.camPitch = 0.14;
 }
 
 export function stageShot(game, name) {
-  shrink(game);
-  const rig = game.cameraRig;
-  game.cash = 485;
-  game.health = 100;
+  game.shotMode = true;
+  game.state = 'playing';
+  game.hud.hideScreens();
+  game.applyProfile(freshSave());
+  const m = game.missions;
 
   if (name === 'drive') {
-    const car = game.cars.find((c) => c.type === 'sport' && c !== game.markedCar) ?? game.cars[1];
-    putPlayerInCar(game, car, -22 - 3.4, -30, 0, 17);
-    const ahead = game.cars.filter((c) => c.traffic)[1];
-    if (ahead) {
-      ahead.traffic.dirX = 0;
-      ahead.traffic.dirZ = 1;
-      ahead.traffic.line = -22;
-      ahead.x = -25.4;
-      ahead.z = 26;
-      ahead.heading = 0;
-      ahead.speed = 9;
-    }
-    rig.yaw = 0.12;
-    rig.pitch = 0.3;
-    rig.dist = 10.5;
-    step(game, 2.2, () => { car.speed = 17; car.heading = 0; });
+    game.profile.cash = 485;
+    const car = game.parkedCars[0];
+    putPlayerInCar(game, car, -30, 124, Math.PI / 2, 12.5);
+    m.stage = 0;
   } else if (name === 'chase') {
-    game.missions.storyIndex = 2;
-    game.missions.stage = 'escape';
-    const car = game.cars.find((c) => c.type === 'sedan' && c.driver === 'parked') ?? game.cars[2];
-    putPlayerInCar(game, car, 60, 22 - 3.4, -Math.PI / 2, 19);
-    game.wanted = 3;
-    game.crimeTimer = 9999;
-    for (const [ox, oz] of [[9, 4], [14, -5]]) {
-      const unit = createCar(game.scene, 'police', 0xffffff, car.x + ox, car.z + oz, -Math.PI / 2);
-      unit.driver = 'police';
-      unit.retire = 0;
-      game.cars.push(unit);
-      game.police.units.push(unit);
-    }
-    // The camera looks back down the avenue: the player's car up front and
-    // the law rolling in behind it.
-    rig.yaw = Math.PI / 2 - 0.3;
-    rig.pitch = 0.3;
-    rig.dist = 11;
-    step(game, 2.6, () => { car.speed = 19; });
-    game.wanted = 3;
+    game.profile.cash = 510;
+    const disc = m.discs.discs[4]; // café corner, already found in this scene
+    disc.taken = true;
+    disc.group.visible = false;
+    game.profile.discs = [4];
+    m.stage = 3;
+    m.caseTaken = true;
+    const car = game.parkedCars[1];
+    putPlayerInCar(game, car, 60, -20, Math.PI / 2, 14);
+    game.police.stars = 3;
+    game.police.spawnCruiser();
+    game.police.spawnCruiser();
+    const [c1, c2] = game.police.cruisers;
+    if (c1) { c1.setPosition(38, -27, Math.PI / 2); c1.speed = 13; }
+    if (c2) { c2.setPosition(30, -13, Math.PI / 2); c2.speed = 12; }
   } else if (name === 'mission') {
-    game.missions.storyIndex = 0;
-    game.missions.stage = 'toWarehouse';
-    placePlayer(game, POIS.warehouse.x - 28, POIS.warehouse.z + 20, Math.atan2(28, -20));
-    rig.yaw = Math.atan2(28, -20);
-    rig.pitch = 0.22;
-    rig.dist = 9.5;
-    step(game, 2);
+    game.profile.cash = 485;
+    m.stage = 1;
+    m.timer = 170;
+    game.player.setPosition(-118, -116, -2.2);
+    game.camYaw = -2.2;
+    game.camPitch = 0.12;
   } else {
-    // cover: on foot at the café corner, looking south-east down the avenue
-    // toward the boardwalk and the sea with traffic rolling through — and a
-    // sun disc glinting on the café corner behind the player's shoulder.
-    placePlayer(game, -112, -102, 0.62);
-    const traffic = game.cars.find((c) => c.traffic);
-    if (traffic) {
-      traffic.traffic.dirX = 1;
-      traffic.traffic.dirZ = 0;
-      traffic.traffic.line = -66;
-      traffic.x = -152;
-      traffic.z = -66 + 3.4;
-      traffic.heading = Math.PI / 2;
-      traffic.speed = 13;
-    }
-    const walkers = game.peds.slice(0, 2);
-    walkers[0].x = -117;
-    walkers[0].z = -90;
-    walkers[0].target = null;
-    walkers[1].x = -101;
-    walkers[1].z = -78;
-    walkers[1].target = null;
-    rig.yaw = 0.62;
-    rig.pitch = 0.24;
-    rig.dist = 8;
-    step(game, 2.4);
+    // 'cover' and anything unrecognized: the opening moment of the game.
+    game.profile.cash = 485;
+    m.stage = 0;
+    game.player.setPosition(PLACES.spawn.x, PLACES.spawn.z, PLACES.spawn.heading);
+    game.camYaw = PLACES.spawn.heading;
+    game.camPitch = 0.16;
   }
-
-  // Return to full size, settle the camera, flag the finished frame.
-  restore(game);
-  game.snapCamera = true;
-  game.update(1 / 30);
-  game.update(0);
-  window.__shotReady = true;
+  m.refreshObjective();
 }

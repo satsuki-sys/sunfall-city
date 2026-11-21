@@ -1,142 +1,224 @@
-// Traffic: civilian cars cruising the avenue grid on the correct side of
-// the road. They choose turns at intersections, follow the car ahead at a
-// smooth distance instead of slamming between the pedals, ease off early
-// when cross traffic is moving through the junction ahead, and honk when
-// the player blocks them beyond their patience. Each driver is a small
-// state machine steering at a point a little way ahead on its lane, with
-// a personal patience for being stuck.
+// traffic.js — the civilian fleet. Each traffic car holds a lane on the
+// grid (right-hand traffic: eastbound rides the south lane of its avenue,
+// northbound the east lane of its street), follows it with a pure-pursuit
+// steer, and turns at junctions when the mood takes it. Drivers keep a
+// smooth gap to whatever is ahead — proportional throttle instead of brake
+// slamming — ease off when cross traffic is inside a junction, and honk at
+// anyone who blocks them past their patience, which each driver draws from
+// the seeded generator like everything else in the city.
 
-import { avenueLines } from './config.js';
-import { angleDelta, clamp, dist2d } from './random.js';
-import { stepCar } from './vehicles.js';
+import { Car } from './vehicles.js';
+import { STREETS_X, AVENUES_Z, CAR_COLORS, TUNE, makeRng } from './config.js';
 
-const AVENUES = avenueLines();
-const LANE = 3.4; // lane offset from the avenue centreline, right-hand traffic
+const LANE_OFF = 4;
 
-/** The point on the driving lane, `along` metres along the avenue at `line`. */
-function lanePoint(line, dirX, dirZ, along) {
-  // Right-hand traffic: heading +x keeps the lane at z = line + LANE, and so on.
-  if (dirX === 1) return { x: along, z: line + LANE };
-  if (dirX === -1) return { x: along, z: line - LANE };
-  if (dirZ === 1) return { x: line - LANE, z: along };
-  return { x: line + LANE, z: along };
+// The lane coordinate for a road line and a travel direction.
+function laneCoord(line, axis, dir) {
+  // axis 'x': travelling along an avenue (constant z). Eastbound (+x) keeps
+  // right, which is the +z lane. axis 'z': northbound (-z) keeps right, +x.
+  if (axis === 'x') return line + (dir > 0 ? LANE_OFF : -LANE_OFF);
+  return line + (dir < 0 ? LANE_OFF : -LANE_OFF);
 }
 
-export class TrafficDriver {
-  constructor(car, rng) {
-    this.car = car;
+function headingFor(axis, dir) {
+  if (axis === 'x') return dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+  return dir > 0 ? 0 : Math.PI;
+}
+
+function angleDiff(a, b) {
+  let d = a - b;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+class TrafficDriver {
+  constructor(world, rng) {
+    this.world = world;
     this.rng = rng;
-    // Settle onto the nearest avenue and pick a direction along it.
-    if (rng.chance(0.5)) {
-      this.line = nearest(car.z);
-      this.dirX = rng.chance(0.5) ? 1 : -1;
-      this.dirZ = 0;
+    const taxi = rng() < 0.14;
+    this.car = new Car(world.scene, {
+      color: CAR_COLORS[Math.floor(rng() * CAR_COLORS.length)], taxi,
+    });
+    this.cruise = 8.5 + rng() * 4;
+    this.patience = 1.6 + rng() * 2.6;  // seconds of blockage before the horn
+    this.blockedFor = 0;
+    this.turn = null;                    // {x, z, axis, dir, line, age}
+    this.placeRandom(rng);
+  }
+
+  // Put the car on a random lane somewhere in the city, rolling.
+  placeRandom(rng) {
+    if (rng() < 0.5) {
+      this.axis = 'x';
+      this.line = AVENUES_Z[Math.floor(rng() * AVENUES_Z.length)];
+      this.dir = rng() < 0.5 ? 1 : -1;
+      const x = -170 + rng() * 340;
+      this.car.setPosition(x, laneCoord(this.line, 'x', this.dir), headingFor('x', this.dir));
     } else {
-      this.line = nearest(car.x);
-      this.dirX = 0;
-      this.dirZ = rng.chance(0.5) ? 1 : -1;
+      this.axis = 'z';
+      this.line = STREETS_X[Math.floor(rng() * STREETS_X.length)];
+      this.dir = rng() < 0.5 ? 1 : -1;
+      const z = -170 + rng() * 290;
+      this.car.setPosition(laneCoord(this.line, 'z', this.dir), z, headingFor('z', this.dir));
     }
-    this.targetSpeed = rng.range(9, 14);
-    this.blockedTime = 0;
-    this.patience = rng.range(2.2, 3.8); // seconds stuck before the horn comes out
-    car.driver = 'traffic';
+    this.car.speed = this.cruise * 0.8;
+    this.turn = null;
   }
 
-  /** At an intersection: mostly straight on, sometimes a turn onto the cross avenue. */
-  #chooseTurn() {
-    const r = this.rng.next();
-    if (r < 0.55) return;
-    const turningLeft = r < 0.78;
-    const [ndx, ndz] = turningLeft
-      ? [this.dirZ, -this.dirX]
-      : [-this.dirZ, this.dirX];
-    // The avenue turned onto is the cross street the car is standing on.
-    this.line = this.dirX !== 0 ? nearest(this.car.x) : nearest(this.car.z);
-    this.dirX = ndx;
-    this.dirZ = ndz;
+  // The next junction line strictly ahead of the car on its current road.
+  nextCrossing() {
+    const lines = this.axis === 'x' ? STREETS_X : AVENUES_Z;
+    const pos = this.axis === 'x' ? this.car.pos.x : this.car.pos.z;
+    let best = null;
+    for (const l of lines) {
+      const d = (l - pos) * this.dir;
+      if (d > 1 && (best === null || d < best.d)) best = { line: l, d };
+    }
+    return best;
   }
 
-  update(dt, world) {
-    const car = this.car;
-    if (car.health <= 0) {
-      stepCar(car, { throttle: 0, steer: 0, brake: true }, dt, world.colliders, world.cars);
-      return;
+  // Begin a turn onto the crossing road: aim at a point down the new lane
+  // and let the pursuit steer draw the arc.
+  beginTurn(crossLine) {
+    const options = [-1, 1];
+    const newDir = options[Math.floor(this.rng() * 2)];
+    const newAxis = this.axis === 'x' ? 'z' : 'x';
+    const crossCoord = this.axis === 'x' ? this.car.pos.z : this.car.pos.x;
+    const lane = laneCoord(crossLine, newAxis, newDir);
+    const target = { axis: newAxis, dir: newDir, line: crossLine };
+    if (newAxis === 'z') target.point = { x: lane, z: crossCoord + newDir * -16 };
+    else target.point = { x: crossCoord + newDir * -16, z: lane };
+    // For a z-road the travel direction is along z; the point must lie ahead
+    // in the new direction from the junction centre.
+    if (newAxis === 'z') target.point.z = this.line + newDir * 16;
+    else target.point.x = this.line + newDir * 16;
+    target.age = 0;
+    this.turn = target;
+  }
+
+  // Nearest obstacle in this car's lane corridor, as {gap, speed, blocker}.
+  scanAhead() {
+    const c = this.car;
+    const fx = c.forwardX(), fz = c.forwardZ();
+    let best = null;
+    const consider = (ox, oz, ospeed, blocker) => {
+      const rx = ox - c.pos.x, rz = oz - c.pos.z;
+      const ahead = rx * fx + rz * fz;
+      const lateral = Math.abs(rx * fz - rz * fx);
+      if (ahead > 0.5 && ahead < 15 && lateral < 2.3) {
+        if (!best || ahead < best.gap) best = { gap: ahead, speed: ospeed, blocker };
+      }
+    };
+    for (const other of this.world.allCars()) {
+      if (other !== c) consider(other.pos.x, other.pos.z, other.speed, 'car');
     }
-    const along = this.dirX !== 0 ? car.x : car.z;
-    const cross = this.dirX !== 0 ? car.z : car.x;
+    for (const ped of this.world.peds.people) {
+      if (!ped.down) consider(ped.pos.x, ped.pos.z, 0, 'ped');
+    }
+    const p = this.world.player;
+    if (!this.world.playerCar) consider(p.pos.x, p.pos.z, 0, 'ped');
+    return best;
+  }
 
-    // The next intersection ahead on this avenue, and a chance to turn there.
-    const step = this.dirX + this.dirZ > 0 ? 1 : -1;
-    const ahead = AVENUES.map((a) => a - along).filter((d) => d * step > 4).sort((a, b) => Math.abs(a) - Math.abs(b))[0];
-    const toIntersection = ahead === undefined ? 999 : Math.abs(ahead);
-    if (toIntersection < 6 && Math.abs(cross - this.line) < 8 && this.rng.chance(dt * 0.9)) this.#chooseTurn();
+  // Is cross traffic inside the junction we are approaching?
+  junctionBusy(cross) {
+    const cx = this.axis === 'x' ? cross.line : this.car.pos.x;
+    const cz = this.axis === 'x' ? this.car.pos.z : cross.line;
+    for (const other of this.world.allCars()) {
+      if (other === this.car) continue;
+      if (Math.abs(other.pos.x - cx) < 10 && Math.abs(other.pos.z - cz) < 10) return true;
+    }
+    return false;
+  }
 
-    // Steer at a look-ahead point riding on the lane.
-    const lookAhead = lanePoint(this.line, this.dirX, this.dirZ, along + step * 14);
-    const want = Math.atan2(lookAhead.x - car.x, lookAhead.z - car.z);
-    const steer = clamp(angleDelta(car.heading, want) * 2.2, -1, 1);
+  update(dt) {
+    const c = this.car;
+    let desired = this.cruise;
+    let target;
+    const cross = this.nextCrossing();
 
-    // Car-following: settle toward the speed that holds roughly a 7 m gap
-    // to whatever runs slow ahead, instead of alternating full throttle and
-    // full brake. A gap that is genuinely closing still earns the brake.
-    const fwdX = Math.sin(car.heading);
-    const fwdZ = Math.cos(car.heading);
-    let desired = this.targetSpeed;
-    let brake = false;
-    for (const other of world.cars) {
-      if (other === car) continue;
-      const relX = other.x - car.x;
-      const relZ = other.z - car.z;
-      const aheadDist = relX * fwdX + relZ * fwdZ;
-      const sideDist = Math.abs(relX * fwdZ - relZ * fwdX);
-      if (aheadDist > 0 && aheadDist < 16 && sideDist < 2.4) {
-        const follow = other.speed + Math.max(0, (aheadDist - 7) * 0.55);
-        if (follow < desired) desired = follow;
-        if (aheadDist < 5.5 || (aheadDist < 10 && car.speed > other.speed + 4.5)) brake = true;
+    if (this.turn) {
+      this.turn.age += dt;
+      target = this.turn.point;
+      desired = Math.min(desired, 7.5);
+      const dx = target.x - c.pos.x, dz = target.z - c.pos.z;
+      const dist = Math.hypot(dx, dz);
+      const aligned = Math.abs(angleDiff(headingFor(this.turn.axis, this.turn.dir), c.heading)) < 0.45;
+      if ((dist < 4 && aligned) || this.turn.age > 4.5) {
+        this.axis = this.turn.axis;
+        this.dir = this.turn.dir;
+        this.line = this.turn.line;
+        this.turn = null;
+      }
+    } else {
+      // Aim at a point well ahead on the lane line.
+      if (this.axis === 'x') {
+        target = { x: c.pos.x + this.dir * 12, z: laneCoord(this.line, 'x', this.dir) };
+      } else {
+        target = { x: laneCoord(this.line, 'z', this.dir), z: c.pos.z + this.dir * 12 };
+      }
+      if (cross) {
+        const atEdge = (this.axis === 'x' &&
+          (cross.line === STREETS_X[0] || cross.line === STREETS_X[STREETS_X.length - 1])) ||
+          (this.axis === 'z' &&
+          (cross.line === AVENUES_Z[0] || cross.line === AVENUES_Z[AVENUES_Z.length - 1]));
+        if (cross.d < 10 && (atEdge || this.rng() < 0.011)) this.beginTurn(cross.line);
+        else if (cross.d < 12 && this.junctionBusy(cross)) desired = Math.min(desired, 3);
       }
     }
 
-    // Junction caution: cross traffic moving through the intersection just
-    // ahead means lifting off early instead of arriving at full speed.
-    if (toIntersection < 13) {
-      const ix = this.dirX !== 0 ? along + ahead : this.line;
-      const iz = this.dirX !== 0 ? this.line : along + ahead;
-      for (const other of world.cars) {
-        if (other === car) continue;
-        if (Math.abs(other.speed) > 1 && dist2d(other.x, other.z, ix, iz) < 10) {
-          if (desired > 5.5) desired = 5.5;
-          break;
-        }
+    // Gap keeping: match the leader's pace, stop short of its bumper.
+    const obstacle = this.scanAhead();
+    let blocked = false;
+    if (obstacle) {
+      if (obstacle.gap < 6.5) desired = 0;
+      else desired = Math.min(desired, obstacle.speed + (obstacle.gap - 8) * 0.55);
+      blocked = desired <= 0.5 && c.speed < 1;
+    }
+    if (blocked) {
+      this.blockedFor += dt;
+      if (this.blockedFor > this.patience && (obstacle.blocker !== 'car' || this.rng() < 0.5)) {
+        this.world.audio.horn();
+        this.blockedFor = this.patience * 0.4; // grumble again later if still stuck
       }
+    } else {
+      this.blockedFor = Math.max(0, this.blockedFor - dt * 2);
     }
 
-    const throttle = brake ? 0 : clamp((desired - car.speed) * 0.45, 0, 0.8);
-
-    // Stuck longer than this driver's patience runs? The horn says so.
-    if (brake || throttle <= 0.01) {
-      this.blockedTime += dt;
-      if (this.blockedTime > this.patience && car.honkCooldown <= 0) {
-        world.onHonk(car);
-        car.honkCooldown = 4;
-        this.blockedTime = 0;
-      }
-    } else this.blockedTime = 0;
-
-    stepCar(car, { throttle, steer, brake }, dt, world.colliders, world.cars);
-
-    // Over time, drift gently back onto the lane centreline.
-    const lp = lanePoint(this.line, this.dirX, this.dirZ, along);
-    if (this.dirX !== 0) car.z += (lp.z - car.z) * Math.min(1, dt * 0.7);
-    else car.x += (lp.x - car.x) * Math.min(1, dt * 0.7);
+    const desiredHeading = Math.atan2(target.x - c.pos.x, target.z - c.pos.z);
+    const steer = THREE_clamp(angleDiff(desiredHeading, c.heading) * 1.7, -1, 1);
+    const throttle = c.speed < desired - 0.4 ? 0.8 : (c.speed > desired + 0.6 ? -0.8 : 0);
+    c.update(dt, { throttle, steer, handbrake: false });
   }
 }
 
-/** The avenue coordinate nearest to v. */
-function nearest(v) {
-  let best = AVENUES[0];
-  for (const a of AVENUES) if (Math.abs(a - v) < Math.abs(best - v)) best = a;
-  return best;
+function THREE_clamp(v, lo, hi) {
+  return v < lo ? lo : (v > hi ? hi : v);
 }
 
-export { nearest as nearestAvenue };
-export const trafficDist = dist2d;
+export class Traffic {
+  constructor(world) {
+    this.world = world;
+    const rng = makeRng(world.seed * 7 + 11);
+    this.drivers = [];
+    for (let i = 0; i < TUNE.trafficCount; i++) {
+      this.drivers.push(new TrafficDriver(world, rng));
+    }
+  }
+
+  get cars() {
+    return this.drivers.map((d) => d.car);
+  }
+
+  update(dt) {
+    const p = this.world.player.pos;
+    for (const d of this.drivers) {
+      d.update(dt);
+      // Keep the fleet near the action: a car that has wandered to the far
+      // side of town quietly re-enters on a lane nearer the player.
+      const far = Math.hypot(d.car.pos.x - p.x, d.car.pos.z - p.z) > 300;
+      if (far) d.placeRandom(d.rng);
+    }
+  }
+}

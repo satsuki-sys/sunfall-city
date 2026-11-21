@@ -1,132 +1,136 @@
-// The Sunfall PD: interceptors answering to the wanted level. Units spawn
-// on avenues a block or two out from the player, hunt the player's
-// position, ram a fleeing car and box in a runner on foot. Their light
-// bars alternate red and blue — glow halos included — and the nearest
-// unit's distance drives the siren in the audio mix.
+// police.js — Sunfall PD and the wanted system. The world raises the wanted
+// level (one to five stars) when crimes are committed in the open; this
+// module turns stars into patrol cars. Each star fields a cruiser, up to
+// four, spawned on streets near the player and driven by a pursuit steer
+// that aims where the player is heading, not just where they are. Cruisers
+// ram: contact at speed hurts. When the player is slow or on foot with a
+// cruiser close, the bust meter fills; when the player breaks sight for
+// long enough, the heat cools a star at a time. All of that state lives
+// here; the world reads it to drive the HUD and the end screens.
 
-import { WANTED } from './config.js';
-import { angleDelta, clamp, dist2d } from './random.js';
-import { createCar, stepCar } from './vehicles.js';
-import { nearestAvenue } from './traffic.js';
+import { Car } from './vehicles.js';
+import { STREETS_X, AVENUES_Z, TUNE } from './config.js';
 
-export class PoliceForce {
-  constructor(scene, world) {
-    this.scene = scene;
+function angleDiff(a, b) {
+  let d = a - b;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+function clamp(v, lo, hi) {
+  return v < lo ? lo : (v > hi ? hi : v);
+}
+
+export class Police {
+  constructor(world) {
     this.world = world;
-    this.units = [];       // the cars whose driver is 'police'
-    this.spawnCooldown = 0;
+    this.stars = 0;          // the wanted level, 0..5
+    this.cruisers = [];      // live Car objects with the light bars
+    this.bust = 0;           // 0..1, the bust meter
+    this.sinceCrime = 0;     // seconds since the last witnessed crime
+    this.sinceSeen = 0;      // seconds since a cruiser last had eyes on us
+    this.nearest = Infinity; // distance of the closest cruiser this frame
   }
 
-  activeCount() {
-    return this.units.filter((u) => u.health > 0).length;
+  get active() {
+    return this.stars > 0;
   }
 
-  nearestDistance(pos) {
-    let best = Infinity;
-    for (const u of this.units) {
-      if (u.health <= 0) continue;
-      best = Math.min(best, dist2d(u.x, u.z, pos.x, pos.z));
-    }
-    return best;
+  // The world calls this when the player commits a crime in the open:
+  // shooting, stealing, running someone down, ramming a cruiser.
+  raise(amount) {
+    this.stars = Math.min(5, this.stars + amount);
+    this.sinceCrime = 0;
+    this.sinceSeen = 0;
   }
 
-  update(dt, t) {
+  clear() {
+    this.stars = 0;
+    this.bust = 0;
+    this.sinceCrime = 0;
+    this.sinceSeen = 0;
+  }
+
+  // Put a cruiser on a street a little way from the player, facing them.
+  spawnCruiser() {
+    const p = this.world.player.pos;
+    const car = new Car(this.world.scene, { police: true });
+    const street = STREETS_X[Math.floor(Math.random() * STREETS_X.length)];
+    const avenue = AVENUES_Z[Math.floor(Math.random() * AVENUES_Z.length)];
+    const spots = [
+      { x: street + 4, z: p.z - 55 }, { x: street - 4, z: p.z + 55 },
+      { x: p.x - 55, z: avenue + 4 }, { x: p.x + 55, z: avenue - 4 },
+    ];
+    let spot = spots[Math.floor(Math.random() * spots.length)];
+    spot.x = clamp(spot.x, -184, 184);
+    spot.z = clamp(spot.z, -184, 126);
+    const heading = Math.atan2(p.x - spot.x, p.z - spot.z);
+    car.setPosition(spot.x, spot.z, heading);
+    car.speed = 10;
+    this.cruisers.push(car);
+  }
+
+  update(dt, elapsed) {
     const world = this.world;
-    const wanted = world.wanted;
-    const desired = WANTED.policeByStars[wanted] ?? 0;
-    this.spawnCooldown -= dt;
+    const target = world.playerCar || world.player;
+    const tp = target.pos;
+    const tvx = target === world.player ? 0 : target.forwardX() * target.speed;
+    const tvz = target === world.player ? 0 : target.forwardZ() * target.speed;
 
-    // Keep the force at the strength the wanted level asks for.
-    if (this.activeCount() < desired && this.spawnCooldown <= 0) this.#spawn();
+    // Field as many cruisers as the stars demand (and never more than 4).
+    const wanted = Math.min(4, this.stars);
+    while (this.cruisers.length < wanted) this.spawnCruiser();
+    while (this.cruisers.length > wanted) {
+      const car = this.cruisers.pop();
+      car.destroy(world.scene);
+    }
 
-    // Retire what the heat no longer needs: units out of sight once the
-    // stars are gone, and hulks that have sat wrecked for a long while.
-    for (const u of [...this.units]) {
-      const farAndCalm = wanted === 0 && dist2d(u.x, u.z, world.playerPos.x, world.playerPos.z) > 95;
-      const wreckedLongAgo = u.health <= 0 && u.retire > 25;
-      if (farAndCalm || wreckedLongAgo) {
-        this.scene.remove(u.mesh);
-        world.cars.splice(world.cars.indexOf(u), 1);
-        this.units.splice(this.units.indexOf(u), 1);
+    this.nearest = Infinity;
+    let anyEyes = false;
+    for (const car of this.cruisers) {
+      const dx = tp.x - car.pos.x, dz = tp.z - car.pos.z;
+      const dist = Math.hypot(dx, dz);
+      this.nearest = Math.min(this.nearest, dist);
+      if (dist < 70) anyEyes = true;
+      // A cruiser hopelessly far behind is quietly replaced nearer by.
+      if (dist > 240 && this.stars > 0) {
+        const heading = Math.atan2(tp.x - car.pos.x, tp.z - car.pos.z);
+        car.setPosition(
+          clamp(tp.x - Math.sin(heading) * 60, -184, 184),
+          clamp(tp.z - Math.cos(heading) * 60, -184, 126),
+          heading);
       }
+      // Pursuit: aim at the target's near-future position.
+      const lead = clamp(dist * 0.04, 0, 0.9);
+      const aimX = tp.x + tvx * lead, aimZ = tp.z + tvz * lead;
+      const desired = Math.atan2(aimX - car.pos.x, aimZ - car.pos.z);
+      const steer = clamp(angleDiff(desired, car.heading) * 1.9, -1, 1);
+      const topSpeed = 24 + this.stars * 1.2;
+      const throttle = car.speed < topSpeed ? 0.95 : 0;
+      car.update(dt, { throttle, steer, handbrake: Math.abs(steer) > 0.9 && car.speed > 14 });
+      car.updateVisual(elapsed);
     }
 
-    // Drive every unit, strobe its light bar and halos, and set the siren
-    // level from whichever unit is closest.
-    let nearest = Infinity;
-    for (const u of this.units) {
-      this.#drive(u, dt);
-      const flash = u.mesh.userData.flash;
-      if (flash) {
-        const phase = Math.floor(t * 3.2 + u.x) % 2;
-        flash[0].emissiveIntensity = phase === 0 ? 2.4 : 0.15;
-        flash[1].emissiveIntensity = phase === 0 ? 0.15 : 2.4;
-        const glow = u.mesh.userData.flashGlow;
-        if (glow) {
-          glow[0].opacity = phase === 0 ? 0.55 : 0.05;
-          glow[1].opacity = phase === 0 ? 0.05 : 0.55;
-        }
-      }
-      if (u.health <= 0) u.retire = (u.retire ?? 0) + dt;
-      nearest = Math.min(nearest, dist2d(u.x, u.z, world.playerPos.x, world.playerPos.z));
-    }
-    const sirenLevel = nearest === Infinity ? 0 : clamp(1 - nearest / 55, 0, 1) * (wanted > 0 ? 1 : 0.3);
-    world.audio.siren(sirenLevel);
-  }
-
-  #spawn() {
-    const world = this.world;
-    const p = world.playerPos;
-    const angle = world.rng.range(0, Math.PI * 2);
-    const dist = world.rng.range(52, 72);
-    const x = clamp(p.x + Math.sin(angle) * dist, -230, 230);
-    const z = clamp(p.z + Math.cos(angle) * dist, -230, 230);
-    // Snap onto the nearest avenue, so the unit arrives by road.
-    const sx = nearestAvenue(x);
-    const car = createCar(this.scene, 'police', 0xffffff, sx, z, Math.atan2(p.x - sx, p.z - z));
-    car.driver = 'police';
-    car.retire = 0;
-    world.cars.push(car);
-    this.units.push(car);
-    this.spawnCooldown = 2.5;
-  }
-
-  #drive(u, dt) {
-    const world = this.world;
-    if (u.health <= 0) {
-      stepCar(u, { throttle: 0, steer: 0, brake: true }, dt, world.colliders, world.cars);
-      return;
-    }
-    // Aim where the target is about to be, not where it stands now.
-    const target = world.playerVehicle ?? world.playerPos;
-    const lead = world.playerVehicle ? 0.35 : 0;
-    const tx = target.x + Math.sin(target.heading ?? 0) * (target.speed ?? 0) * lead;
-    const tz = target.z + Math.cos(target.heading ?? 0) * (target.speed ?? 0) * lead;
-    const d = dist2d(u.x, u.z, tx, tz);
-    const want = Math.atan2(tx - u.x, tz - u.z);
-    const delta = angleDelta(u.heading, want);
-    let steer = clamp(delta * 2.4, -1, 1);
-
-    // A building dead ahead overrides the chase line: swerve around it.
-    const aheadX = u.x + Math.sin(u.heading) * 7;
-    const aheadZ = u.z + Math.cos(u.heading) * 7;
-    for (const c of world.colliders) {
-      if (aheadX > c.minX - 1 && aheadX < c.maxX + 1 && aheadZ > c.minZ - 1 && aheadZ < c.maxZ + 1) {
-        steer = delta >= 0 ? -0.9 : 0.9;
-        break;
-      }
+    // Heat bookkeeping: stars cool one at a time once the player has been
+    // neither seen nor caught committing anything for a good while.
+    this.sinceCrime += dt;
+    if (anyEyes) this.sinceSeen = 0; else this.sinceSeen += dt;
+    if (this.stars > 0 && this.sinceCrime > TUNE.wantedDecaySeconds && this.sinceSeen > 9) {
+      this.stars -= 1;
+      this.sinceCrime = TUNE.wantedDecaySeconds - 6; // next star a little sooner
+      if (this.stars === 0) this.bust = 0;
+      world.onHeatCooled?.();
     }
 
-    let throttle = 1;
-    if (Math.abs(delta) > 2.2 && u.speed < 4) throttle = -1; // reverse to swing the nose round
-    else if (Math.abs(delta) > 1.2) throttle = 0.45;
-    if (!world.playerVehicle && d < 5) throttle = 0;         // on foot: pull up alongside
-    if (!world.playerVehicle && d < 2.6) throttle = -0.4;
-    stepCar(u, { throttle, steer, brake: false }, dt, world.colliders, world.cars);
-
-    // A solid ram into the player's car does real damage.
-    if (u.lastImpact > 8 && world.playerVehicle === target && target.driver === 'player') {
-      world.damagePlayer(4, u);
+    // The bust meter: a cruiser on top of a slow or foot-bound player.
+    const playerSpeed = world.playerCar ? Math.abs(world.playerCar.speed) : world.player.speedNow;
+    const inReach = this.nearest < (world.playerCar ? 7.5 : 6);
+    if (this.stars > 0 && inReach && playerSpeed < 2.2) {
+      this.bust = Math.min(1, this.bust + dt / TUNE.bustFillSeconds);
+    } else {
+      this.bust = Math.max(0, this.bust - dt / (TUNE.bustFillSeconds * 0.8));
     }
+    if (this.bust >= 1) world.onBusted?.();
   }
 }

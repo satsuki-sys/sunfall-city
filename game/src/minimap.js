@@ -1,112 +1,112 @@
-// The minimap: a north-up canvas plot of the avenue grid, the beach and
-// the sea, carrying blips for the player, the player's own car, the
-// police, the sun discs still waiting out there, and whatever the current
-// objective points at. It redraws from live positions every frame and so
-// keeps no state of its own between frames. The legend beside the map, in
-// index.html, names each marker.
+// minimap.js — the round map in the bottom-right corner, drawn on a 2D
+// canvas every frame: the street grid and the sea, amber dots for the sun
+// discs still waiting, a gold diamond for the objective, blue squares for
+// police cruisers, an outline for the car the player last drove, and a
+// white arrow for the player that turns with their heading. The legend
+// above it is plain HTML in index.html.
 
-import { CITY, avenueLines } from './config.js';
+import { STREETS_X, AVENUES_Z, CITY } from './config.js';
 
-const SIZE = 184;             // canvas edge, in pixels
-const SPAN = 620;             // world metres shown across the map
-const SCALE = SIZE / SPAN;
-const ORIGIN = -270;          // world x/z that lands on the map's top-left
-
-const mapX = (x) => (x - ORIGIN) * SCALE;
-const mapZ = (z) => (z - ORIGIN) * SCALE;
+// The map covers x and z from -200 to +220 in a square canvas.
+const SPAN = 420;
+const ORIGIN = -200;
 
 export class Minimap {
-  constructor(canvas) {
+  constructor(canvas, world) {
+    this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.avenues = avenueLines();
+    this.world = world;
+    this.scale = canvas.width / SPAN;
   }
 
-  draw(world) {
-    const g = this.ctx;
-    g.clearRect(0, 0, SIZE, SIZE);
-    g.save();
-    g.beginPath();
-    g.arc(SIZE / 2, SIZE / 2, SIZE / 2 - 1, 0, Math.PI * 2);
-    g.clip();
+  px(x) { return (x - ORIGIN) * this.scale; }
+  py(z) { return (z - ORIGIN) * this.scale; }
 
-    // Ground: land first, then a band of beach, then the sea to the south.
-    g.fillStyle = '#274b3a';
-    g.fillRect(0, 0, SIZE, SIZE);
-    g.fillStyle = '#e8d29a';
-    g.fillRect(0, mapZ(CITY.beachZ), SIZE, mapZ(CITY.waterZ) - mapZ(CITY.beachZ));
-    g.fillStyle = '#2e8fa3';
-    g.fillRect(0, mapZ(CITY.waterZ), SIZE, SIZE - mapZ(CITY.waterZ));
+  draw() {
+    const { ctx, canvas } = this;
+    const w = this.world;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(canvas.width / 2, canvas.height / 2, canvas.width / 2, 0, Math.PI * 2);
+    ctx.clip();
 
-    // Roads: one stroke per avenue, drawn along both axes.
-    g.strokeStyle = '#565e68';
-    g.lineWidth = Math.max(2, CITY.roadWide * SCALE);
-    for (const a of this.avenues) {
-      g.beginPath(); g.moveTo(mapX(a), 0); g.lineTo(mapX(a), SIZE); g.stroke();
-      g.beginPath(); g.moveTo(0, mapZ(a)); g.lineTo(SIZE, mapZ(a)); g.stroke();
+    // Land, then the sea and the beach along the south edge.
+    ctx.fillStyle = '#1e3d33';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#c9ae76';
+    ctx.fillRect(0, this.py(CITY.beachZ), canvas.width, (CITY.waterZ - CITY.beachZ) * this.scale);
+    ctx.fillStyle = '#2e6b7a';
+    ctx.fillRect(0, this.py(CITY.waterZ), canvas.width, canvas.height);
+
+    // The street grid.
+    ctx.strokeStyle = '#4a5d5f';
+    ctx.lineWidth = Math.max(2, 16 * this.scale);
+    for (const z of AVENUES_Z) {
+      ctx.beginPath();
+      ctx.moveTo(0, this.py(z));
+      ctx.lineTo(canvas.width, this.py(z));
+      ctx.stroke();
+    }
+    for (const x of STREETS_X) {
+      ctx.beginPath();
+      ctx.moveTo(this.px(x), 0);
+      ctx.lineTo(this.px(x), this.py(CITY.boardwalkZ));
+      ctx.stroke();
+    }
+    // The pier.
+    ctx.strokeStyle = '#8a6844';
+    ctx.lineWidth = Math.max(2, 9 * this.scale);
+    ctx.beginPath();
+    ctx.moveTo(this.px(CITY.pierX), this.py(CITY.beachZ));
+    ctx.lineTo(this.px(CITY.pierX), this.py(CITY.pierEndZ));
+    ctx.stroke();
+
+    // Sun discs still out there.
+    ctx.fillStyle = '#ffb52e';
+    for (const disc of w.missions.discs.discs) {
+      if (disc.taken) continue;
+      ctx.beginPath();
+      ctx.arc(this.px(disc.x), this.py(disc.z), 2.4, 0, Math.PI * 2);
+      ctx.fill();
     }
 
-    // Sun discs not yet collected: small, steady amber dots — treasure, not alarm.
-    const discs = world.missions?.discs;
-    if (discs) {
-      g.fillStyle = '#ffb02e';
-      for (const disc of discs) {
-        if (disc.taken) continue;
-        g.beginPath();
-        g.arc(mapX(disc.x), mapZ(disc.z), 2.1, 0, Math.PI * 2);
-        g.fill();
-      }
+    // Police cruisers.
+    ctx.fillStyle = '#5aa2ff';
+    for (const car of w.police.cruisers) {
+      ctx.fillRect(this.px(car.pos.x) - 2.5, this.py(car.pos.z) - 2.5, 5, 5);
     }
 
-    // Police blips, alternating blue and red the way the light bars do.
-    const flashBlue = Math.floor(performance.now() / 280) % 2 === 0;
-    for (const car of world.cars) {
-      if (car.driver !== 'police' || car.health <= 0) continue;
-      g.fillStyle = flashBlue ? '#3f8cff' : '#ff5040';
-      g.fillRect(mapX(car.x) - 2.5, mapZ(car.z) - 2.5, 5, 5);
+    // The car the player last drove, if they are not in it.
+    if (!w.playerCar && w.lastCar) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.4;
+      ctx.strokeRect(this.px(w.lastCar.pos.x) - 3, this.py(w.lastCar.pos.z) - 3, 6, 6);
     }
 
-    // The player's car, marked for as long as they are away from it on foot.
-    if (!world.playerVehicle && world.lastCar) {
-      g.fillStyle = '#f7f3ea';
-      g.fillRect(mapX(world.lastCar.x) - 2, mapZ(world.lastCar.z) - 2, 4, 4);
+    // The objective: a gold diamond.
+    const obj = w.missions.objective;
+    if (obj && obj.target) {
+      const x = this.px(obj.target.x), y = this.py(obj.target.z);
+      ctx.fillStyle = '#ffd83c';
+      ctx.beginPath();
+      ctx.moveTo(x, y - 5); ctx.lineTo(x + 4, y); ctx.lineTo(x, y + 5); ctx.lineTo(x - 4, y);
+      ctx.closePath();
+      ctx.fill();
     }
 
-    // Objective marker: a small diamond in the target's own colour.
-    const target = world.missions?.target;
-    if (target) {
-      g.fillStyle = target.color ?? '#ffd23e';
-      const tx = mapX(target.x);
-      const tz = mapZ(target.z);
-      g.beginPath();
-      g.moveTo(tx, tz - 5);
-      g.lineTo(tx + 4, tz);
-      g.lineTo(tx, tz + 5);
-      g.lineTo(tx - 4, tz);
-      g.closePath();
-      g.fill();
-    }
+    // The player: a white arrow on their heading (the car's, when driving).
+    const focus = w.playerCar || w.player;
+    const fx = this.px(focus.pos.x), fy = this.py(focus.pos.z);
+    const h = focus.heading;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(fx + Math.sin(h) * 6, fy + Math.cos(h) * 6);
+    ctx.lineTo(fx + Math.sin(h + 2.5) * 4.6, fy + Math.cos(h + 2.5) * 4.6);
+    ctx.lineTo(fx + Math.sin(h - 2.5) * 4.6, fy + Math.cos(h - 2.5) * 4.6);
+    ctx.closePath();
+    ctx.fill();
 
-    // Player arrow, turned to the heading of the player or of their car.
-    const p = world.playerPos;
-    const heading = world.playerVehicle ? world.playerVehicle.heading : world.player.heading;
-    g.translate(mapX(p.x), mapZ(p.z));
-    g.rotate(headingToMap(heading));
-    g.fillStyle = '#ffffff';
-    g.beginPath();
-    g.moveTo(0, -6);
-    g.lineTo(4, 5);
-    g.lineTo(0, 2.4);
-    g.lineTo(-4, 5);
-    g.closePath();
-    g.fill();
-    g.restore();
+    ctx.restore();
   }
-}
-
-/** Convert a world heading (0 = +z/south, growing toward +x/east) for canvas. */
-function headingToMap(heading) {
-  // Canvas y runs downward (south) and x rightward (east), so a heading of
-  // 0 already points down the map and PI/2 points right: the up-arrow takes
-  // the heading exactly as it stands.
-  return heading;
 }

@@ -1,140 +1,135 @@
-// The HUD is ordinary DOM floating above the canvas: health, cash and the
-// sun-disc tally at top left; wanted stars at top right; the mission
-// objective centred just under the top edge; a queue of story banners; an
-// interaction prompt; a speedometer; a bust meter that fills while the law
-// closes in on foot; and a damage vignette. Each setter remembers the last
-// value it wrote, so an unchanged readout never touches the DOM.
+// hud.js — everything the player reads: the health bar, cash and sun disc
+// tally at the top left, the wanted stars and the bust meter at the top
+// right, the objective banner across the top centre, toasts, the speed
+// readout, the context prompt along the bottom, and the three full screens
+// (title, pause, downed/busted). The DOM itself lives in index.html; this
+// class finds the elements, wires the buttons, and keeps the text current,
+// touching the DOM only when a value actually changes.
+
+function el(id) {
+  return document.getElementById(id);
+}
 
 export class Hud {
   constructor() {
-    const byId = (id) => document.getElementById(id);
-    this.root = byId('hud');
-    this.healthBar = byId('health-bar');
-    this.cashEl = byId('cash');
-    this.packagesEl = byId('packages');
-    this.starsEl = byId('stars');
-    this.objectiveEl = byId('objective');
-    this.objectiveTitle = byId('objective-title');
-    this.objectiveText = byId('objective-text');
-    this.objectiveDist = byId('objective-dist');
-    this.bannerEl = byId('banner');
-    this.promptEl = byId('prompt');
-    this.speedEl = byId('speed');
-    this.bustWrap = byId('bust-wrap');
-    this.bustBar = byId('bust-bar');
-    this.crosshairEl = byId('crosshair');
-    this.vignetteEl = byId('vignette');
-    this.toastEl = byId('toast');
-    this.toastTitle = byId('toast-title');
-    this.toastSub = byId('toast-sub');
-    this.bannerQueue = [];
-    this.bannerTimer = 0;
-    this.toastTimer = 0;
-    this.vignette = 0;
-    this.lastStars = -1;
-    this.lastCash = null;
-    this.lastPackages = -1;
-    this.lastBust = -1;
+    this.healthFill = el('health-fill');
+    this.cashEl = el('cash');
+    this.discsEl = el('discs');
+    this.starsOn = el('stars-on');
+    this.starsOff = el('stars-off');
+    this.bustWrap = el('bust');
+    this.bustFill = el('bust-fill');
+    this.objTitle = el('obj-title');
+    this.objText = el('obj-text');
+    this.objDist = el('obj-dist');
+    this.toastEl = el('toast');
+    this.speedEl = el('speed');
+    this.hintEl = el('hint');
+    this.promptEl = el('prompt');
+    this.crosshair = el('crosshair');
+    this.titleScreen = el('title-screen');
+    this.pauseScreen = el('pause-screen');
+    this.endScreen = el('end-screen');
+    this.endTitle = el('end-title');
+    this.endText = el('end-text');
+    this.pauseStats = el('pause-stats');
+    this.continueBtn = el('btn-continue');
+
+    this.cache = {};
+    this.toastTimer = null;
+
+    // Button callbacks are assigned by main.js / the world.
+    this.onNewGame = null;
+    this.onContinue = null;
+    this.onResume = null;
+    this.onRespawn = null;
+    el('btn-new').addEventListener('click', () => this.onNewGame?.());
+    this.continueBtn.addEventListener('click', () => this.onContinue?.());
+    el('btn-resume').addEventListener('click', () => this.onResume?.());
+    el('btn-respawn').addEventListener('click', () => this.onRespawn?.());
   }
 
-  show() { this.root.style.display = 'block'; }
-  hide() { this.root.style.display = 'none'; }
-
-  setHealth(frac) {
-    const clamped = Math.max(0, Math.min(1, frac));
-    this.healthBar.style.width = `${clamped * 100}%`;
-    this.healthBar.style.background = frac < 0.3 ? '#e5534b' : frac < 0.6 ? '#f2c14e' : '#7bc96f';
+  setText(key, node, value) {
+    if (this.cache[key] !== value) {
+      this.cache[key] = value;
+      node.textContent = value;
+    }
   }
 
-  setCash(n) {
-    if (n === this.lastCash) return;
-    this.lastCash = n;
-    this.cashEl.textContent = `$${Math.floor(n).toLocaleString('en-US')}`;
+  setObjective(title, text) {
+    this.setText('objTitle', this.objTitle, title || '');
+    this.setText('objText', this.objText, text || '');
+    if (!title && !text) this.setText('objDist', this.objDist, '');
   }
 
-  /** The tally beneath the cash line: discs found, out of the city's total. */
-  setPackages(found, total) {
-    if (found === this.lastPackages) return;
-    this.lastPackages = found;
-    this.packagesEl.textContent = `◆ SUN DISCS ${found}/${total}`;
-    this.packagesEl.style.color = found >= total ? '#ffd23e' : 'rgba(255,233,200,.8)';
+  setObjectiveDistance(metres) {
+    this.setText('objDist', this.objDist, metres == null ? '' : `${Math.round(metres)} m`);
   }
 
-  setWanted(n) {
-    if (n === this.lastStars) return;
-    this.lastStars = n;
-    this.starsEl.textContent = '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n);
-    this.starsEl.style.opacity = n === 0 ? '0.25' : '1';
-  }
-
-  /** The bust meter stays out of sight until it begins to fill (frac > 0). */
-  setBust(frac) {
-    const shown = frac > 0.01;
-    const rounded = Math.round(frac * 40);
-    if (rounded === this.lastBust) return;
-    this.lastBust = rounded;
-    this.bustWrap.style.display = shown ? 'block' : 'none';
-    if (shown) this.bustBar.style.width = `${Math.min(100, frac * 100)}%`;
-  }
-
-  setObjective(title, text, dist) {
-    this.objectiveEl.style.display = 'block';
-    this.objectiveTitle.textContent = title;
-    this.objectiveText.textContent = text;
-    const hasDist = dist !== null && dist !== undefined;
-    this.objectiveDist.textContent = hasDist ? `${Math.round(dist)} m` : '';
-  }
-
-  clearObjective() { this.objectiveEl.style.display = 'none'; }
-
-  /** Queue a story banner; update() plays the queue one banner at a time. */
-  message(text, color = '#ffe9c9') {
-    this.bannerQueue.push({ text, color });
-  }
-
-  toast(title, sub = '') {
-    this.toastTitle.textContent = title;
-    this.toastSub.textContent = sub;
+  // A line of flavour text across the middle of the screen ("Sun disc
+  // found — 1/12 · +$25"), gone again in a few seconds.
+  toast(text, ms = 2600) {
+    this.toastEl.textContent = text;
     this.toastEl.style.opacity = '1';
-    this.toastTimer = 3.2;
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => { this.toastEl.style.opacity = '0'; }, ms);
   }
 
-  setPrompt(text) {
-    if (text) {
-      this.promptEl.textContent = text;
-      this.promptEl.style.display = 'block';
-    } else this.promptEl.style.display = 'none';
+  // Called every frame with a plain snapshot of the game's state.
+  update(s) {
+    this.healthFill.style.width = `${Math.max(0, Math.min(100, s.health))}%`;
+    this.healthFill.style.background = s.health < 30 ? '#e0483c' : '#7ed957';
+    this.setText('cash', this.cashEl, `$${s.cash}`);
+    this.setText('discs', this.discsEl, `◆ SUN DISCS ${s.discs}/12`);
+    this.setText('starsOn', this.starsOn, '★'.repeat(s.stars));
+    this.setText('starsOff', this.starsOff, '☆'.repeat(5 - s.stars));
+    const bustVisible = s.bust > 0.02;
+    if (this.cache.bustVisible !== bustVisible) {
+      this.cache.bustVisible = bustVisible;
+      this.bustWrap.style.opacity = bustVisible ? '1' : '0';
+    }
+    this.bustFill.style.width = `${Math.round(s.bust * 100)}%`;
+    if (s.speedKmh == null) {
+      if (this.cache.speed !== '') { this.cache.speed = ''; this.speedEl.textContent = ''; }
+    } else {
+      this.setText('speed', this.speedEl, `${Math.round(s.speedKmh)} km/h`);
+    }
+    this.setText('hint', this.hintEl, s.driving
+      ? 'W/S drive · A/D steer · Space handbrake · F get out · H horn · P pause'
+      : 'WASD move · mouse look · Shift sprint · F car · click shoot · P pause');
+    this.setText('prompt', this.promptEl, s.prompt || '');
+    const cross = s.playing && !s.driving;
+    if (this.cache.cross !== cross) {
+      this.cache.cross = cross;
+      this.crosshair.style.opacity = cross ? '0.9' : '0';
+    }
   }
 
-  setSpeed(kmh) {
-    if (kmh === null) { this.speedEl.style.display = 'none'; return; }
-    this.speedEl.style.display = 'block';
-    this.speedEl.textContent = `${Math.round(Math.abs(kmh))} km/h`;
+  showTitle(hasSave) {
+    this.titleScreen.style.display = 'flex';
+    this.pauseScreen.style.display = 'none';
+    this.endScreen.style.display = 'none';
+    this.continueBtn.style.display = hasSave ? 'inline-block' : 'none';
   }
 
-  setCrosshair(on) { this.crosshairEl.style.display = on ? 'block' : 'none'; }
+  showPause(statsLine) {
+    this.pauseStats.textContent = statsLine;
+    this.pauseScreen.style.display = 'flex';
+  }
 
-  damageFlash() { this.vignette = 0.75; }
+  hidePause() {
+    this.pauseScreen.style.display = 'none';
+  }
 
-  /** Advance the banner queue, the toast fade and the damage vignette. */
-  update(dt) {
-    if (this.bannerTimer > 0) {
-      this.bannerTimer -= dt;
-      if (this.bannerTimer <= 0) this.bannerEl.style.opacity = '0';
-    } else if (this.bannerQueue.length > 0) {
-      const next = this.bannerQueue.shift();
-      this.bannerEl.textContent = next.text;
-      this.bannerEl.style.color = next.color;
-      this.bannerEl.style.opacity = '1';
-      this.bannerTimer = 2.8;
-    }
-    if (this.toastTimer > 0) {
-      this.toastTimer -= dt;
-      if (this.toastTimer <= 0) this.toastEl.style.opacity = '0';
-    }
-    if (this.vignette > 0) {
-      this.vignette = Math.max(0, this.vignette - dt * 1.4);
-      this.vignetteEl.style.opacity = String(this.vignette);
-    }
+  showEnd(kind, text) {
+    this.endTitle.textContent = kind === 'busted' ? 'BUSTED' : 'DOWNED';
+    this.endText.textContent = text;
+    this.endScreen.style.display = 'flex';
+  }
+
+  hideScreens() {
+    this.titleScreen.style.display = 'none';
+    this.pauseScreen.style.display = 'none';
+    this.endScreen.style.display = 'none';
   }
 }
