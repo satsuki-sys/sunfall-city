@@ -1,176 +1,192 @@
-// peds.js — the crowd. Thirty-six Sunfall pedestrians, low-poly figures in
-// sun hats and caps, stroll the sidewalks on the same grid logic the traffic
-// uses, one pavement over. They keep to the kerb lines, turn corners at
-// junctions, scatter in panic when a shot cracks nearby or a car mounts the
-// pavement at them, and fall when a car actually hits them — the world hears
-// about that and answers with a fine and the police. Each figure is a small
-// group of boxes: legs, torso in a bright shirt, head, and a hat.
+// The crowd: thirty-six Sunfallers in sun hats and caps, each strolling the
+// pavement loop around one block. They scatter from gunfire and fast cars,
+// and going down under somebody's bumper is reported to the world, which
+// handles the fine and the police attention.
 
 import * as THREE from 'three';
-import { STREETS_X, AVENUES_Z, TUNE, makeRng } from './config.js';
+import { BLOCK, ROAD_HALF, clamp, wrapAngle, angleLerp } from './config.js';
+import { groundHeightAt } from './city.js';
 
-const SHIRTS = [0xd95f4b, 0x3f7fbf, 0xe0a83c, 0x4da167, 0xd4698b, 0xeeeee2, 0x2f9e97, 0x8e5ea2];
-const SKIN = [0xe8b98d, 0xc98a5e, 0x8a5a34, 0xf0c8a0];
-const WALK_OFF = 10.6; // kerb line: road half (8) + a pavement stride
+const SHIRTS = [0xf2f0e6, 0xe2703a, 0x3d7bd9, 0xf2b13d, 0x53b06a, 0xe58bb1, 0x63c7c0, 0xd94f3d];
+const SKINS = [0xf2c79b, 0xc98a5a, 0x8a5a34, 0x6e4226, 0xffdbb8];
+const HALF = BLOCK / 2 - ROAD_HALF - 2.4; // pavement loop half-extent: 21.6
 
-// One shared low-poly person, tinted per instance. Returns the group plus
-// the parts the animator swings.
-function buildFigure(rng) {
+function makePedMesh(rng) {
   const g = new THREE.Group();
-  const shirt = new THREE.MeshStandardMaterial({ color: SHIRTS[(rng() * SHIRTS.length) | 0], roughness: 0.9 });
-  const skin = new THREE.MeshStandardMaterial({ color: SKIN[(rng() * SKIN.length) | 0], roughness: 0.8 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x2c2c30, roughness: 1 });
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.72, 0.2), dark);
-  legL.position.set(-0.11, 0.36, 0);
-  const legR = legL.clone();
-  legR.position.x = 0.11;
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.62, 0.3), shirt);
-  torso.position.y = 1.03;
+  const skin = new THREE.MeshLambertMaterial({ color: rng.pick(SKINS) });
+  const shirt = new THREE.MeshLambertMaterial({ color: rng.pick(SHIRTS) });
+  const legs = new THREE.Mesh(
+    new THREE.BoxGeometry(0.46, 0.78, 0.26),
+    new THREE.MeshLambertMaterial({ color: rng.pick([0x37414f, 0x70543a, 0xd8d2c4, 0x4a6741]) }),
+  );
+  legs.position.y = 0.39;
+  g.add(legs);
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.68, 0.3), shirt);
+  torso.position.y = 1.12;
   torso.castShadow = true;
+  g.add(torso);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 10, 8), skin);
-  head.position.y = 1.56;
-  head.castShadow = true;
-  g.add(legL, legR, torso, head);
-  if (rng() < 0.55) { // a wide-brimmed sun hat
-    const hatMat = new THREE.MeshStandardMaterial({ color: 0xe8d9ae, roughness: 1 });
-    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.36, 0.05, 12), hatMat);
-    brim.position.y = 1.7;
-    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.21, 0.16, 12), hatMat);
-    top.position.y = 1.78;
-    g.add(brim, top);
-  } else { // a baseball cap
-    const capMat = new THREE.MeshStandardMaterial({ color: SHIRTS[(rng() * SHIRTS.length) | 0], roughness: 0.9 });
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 6, 0, Math.PI * 2, 0, 1.25), capMat);
-    cap.position.y = 1.58;
+  head.position.y = 1.66;
+  g.add(head);
+  if (rng.chance(0.55)) {
+    // A wide straw sun hat.
+    const hatMat = new THREE.MeshLambertMaterial({ color: 0xe8cf8f });
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.37, 0.37, 0.05, 10), hatMat);
+    brim.position.y = 1.78;
+    g.add(brim);
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.23, 0.17, 10), hatMat);
+    top.position.y = 1.87;
+    g.add(top);
+  } else {
+    // A baseball cap.
+    const capMat = new THREE.MeshLambertMaterial({ color: rng.pick(SHIRTS) });
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), capMat);
+    dome.position.y = 1.7;
+    g.add(dome);
     const peak = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.04, 0.24), capMat);
-    peak.position.set(0, 1.62, 0.26);
-    g.add(cap, peak);
+    peak.position.set(0, 1.7, -0.28);
+    g.add(peak);
   }
-  return { group: g, legL, legR };
+  g.userData.tag = 'ped';
+  return g;
 }
 
-class Pedestrian {
-  constructor(scene, rng) {
-    const fig = buildFigure(rng);
-    this.group = fig.group;
-    this.legL = fig.legL;
-    this.legR = fig.legR;
-    scene.add(this.group);
-    this.heading = 0;
-    this.speed = 1.1 + rng() * 0.7;
-    this.panic = 0;      // seconds of fleeing left
-    this.down = false;   // knocked down by a car
-    this.downTimer = 0;
-    this.walkPhase = rng() * Math.PI * 2;
-    // Start on a random kerb, walking a random way.
-    if (rng() < 0.5) {
-      this.axis = 'x';
-      this.line = AVENUES_Z[(rng() * AVENUES_Z.length) | 0];
-      this.dir = rng() < 0.5 ? 1 : -1;
-      this.side = rng() < 0.5 ? 1 : -1;
-      this.group.position.set(-180 + rng() * 360, 0, this.line + this.side * WALK_OFF);
-    } else {
-      this.axis = 'z';
-      this.line = STREETS_X[(rng() * STREETS_X.length) | 0];
-      this.dir = rng() < 0.5 ? 1 : -1;
-      this.side = rng() < 0.5 ? 1 : -1;
-      this.group.position.set(this.line + this.side * WALK_OFF, 0, -180 + rng() * 300);
+// Point at distance s along the pavement loop of a cell (perimeter walk).
+function loopPoint(cx, cz, s, out) {
+  const edge = (HALF * 2);
+  const per = edge * 4;
+  let d = ((s % per) + per) % per;
+  if (d < edge) out.set(cx - HALF + d, 0, cz - HALF);
+  else if (d < edge * 2) out.set(cx + HALF, 0, cz - HALF + (d - edge));
+  else if (d < edge * 3) out.set(cx + HALF - (d - edge * 2), 0, cz + HALF);
+  else out.set(cx - HALF, 0, cz + HALF - (d - edge * 3));
+  return out;
+}
+
+const _v = new THREE.Vector3();
+
+export class Peds {
+  constructor(scene, rng, count = 36) {
+    this.scene = scene;
+    this.list = [];
+    const cellsX = [-160, -96, -32, 32, 96, 160];
+    const cellsZ = [-160, -96, -32, 32, 96];
+    for (let i = 0; i < count; i++) {
+      const mesh = makePedMesh(rng);
+      scene.add(mesh);
+      const ped = {
+        mesh,
+        cx: rng.pick(cellsX), cz: rng.pick(cellsZ),
+        s: rng.range(0, HALF * 8),
+        speed: rng.range(0.9, 1.5),
+        state: 'walk',
+        stateT: 0,
+        fleeX: 0, fleeZ: 0,
+        angle: 0,
+        phase: rng.range(0, 9),
+        downFor: 0,
+      };
+      mesh.userData.pedRef = ped;
+      loopPoint(ped.cx, ped.cz, ped.s, mesh.position);
+      mesh.position.y = groundHeightAt(mesh.position.x, mesh.position.z);
+      this.list.push(ped);
     }
   }
 
-  get pos() { return this.group.position; }
-
-  // Something frightening happened nearby: run from it for a few seconds.
-  startle(fromX, fromZ) {
-    if (this.down) return;
-    const dx = this.pos.x - fromX, dz = this.pos.z - fromZ;
-    if (Math.hypot(dx, dz) < 16) {
-      this.panic = 2.2;
-      this.fleeHeading = Math.atan2(dx, dz);
-    }
-  }
-
-  knockDown() {
-    if (this.down) return;
-    this.down = true;
-    this.downTimer = 7;
-    this.group.rotation.x = -Math.PI / 2;
-    this.group.position.y = 0.25;
-  }
-
-  update(dt, rng) {
-    if (this.down) {
-      this.downTimer -= dt;
-      if (this.downTimer <= 0) { // bruised, furious, but upright again
-        this.down = false;
-        this.group.rotation.x = 0;
-        this.group.position.y = 0;
+  scatterFrom(x, z, radius = 15) {
+    for (const ped of this.list) {
+      if (ped.state === 'down') continue;
+      const dx = ped.mesh.position.x - x, dz = ped.mesh.position.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d < radius && d > 0.01) {
+        ped.state = 'scatter';
+        ped.stateT = 2.1;
+        ped.fleeX = dx / d;
+        ped.fleeZ = dz / d;
       }
-      return;
     }
-    let speed = this.speed;
-    if (this.panic > 0) {
-      this.panic -= dt;
-      speed = 4.6;
-      this.heading += (((this.fleeHeading - this.heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * Math.min(1, dt * 6);
-    } else {
-      // Stroll the kerb: hold the line, and at a junction sometimes turn.
-      const targetHeading = this.axis === 'x'
-        ? (this.dir > 0 ? Math.PI / 2 : -Math.PI / 2)
-        : (this.dir > 0 ? 0 : Math.PI);
-      this.heading = targetHeading;
-      if (this.axis === 'x') this.group.position.z = this.line + this.side * WALK_OFF;
-      else this.group.position.x = this.line + this.side * WALK_OFF;
-      const lines = this.axis === 'x' ? STREETS_X : AVENUES_Z;
-      const pos = this.axis === 'x' ? this.pos.x : this.pos.z;
-      for (const l of lines) {
-        if (Math.abs(l - pos) < 0.6 && rng() < 0.006) {
-          // Turn the corner onto the crossing pavement.
-          const oldAxis = this.axis;
-          this.axis = oldAxis === 'x' ? 'z' : 'x';
-          this.line = l;
-          this.dir = rng() < 0.5 ? 1 : -1;
-          this.side = rng() < 0.5 ? 1 : -1;
-          if (this.axis === 'z') this.group.position.x = this.line + this.side * WALK_OFF;
-          else this.group.position.z = this.line + this.side * WALK_OFF;
+  }
+
+  update(dt, t) {
+    for (const ped of this.list) {
+      const p = ped.mesh.position;
+      if (ped.state === 'down') {
+        ped.downFor += dt;
+        if (ped.downFor > 40) {
+          // Quietly back on their feet at the kerb, as if nothing happened.
+          ped.state = 'walk';
+          ped.downFor = 0;
+          ped.mesh.rotation.set(0, ped.angle, 0);
+          loopPoint(ped.cx, ped.cz, ped.s, p);
+          p.y = groundHeightAt(p.x, p.z);
+        }
+        continue;
+      }
+      let mx = 0, mz = 0, moving = 0;
+      if (ped.state === 'scatter') {
+        ped.stateT -= dt;
+        mx = ped.fleeX;
+        mz = ped.fleeZ;
+        moving = 3.6;
+        if (ped.stateT <= 0) {
+          ped.state = 'walk';
+          // Rejoin the nearest pavement loop of the home cell from here.
+          ped.s = Math.max(0, (p.x - (ped.cx - HALF)) + (p.z - (ped.cz - HALF)));
+        }
+      } else {
+        ped.s += ped.speed * dt;
+        loopPoint(ped.cx, ped.cz, ped.s, _v);
+        mx = _v.x - p.x;
+        mz = _v.z - p.z;
+        const d = Math.hypot(mx, mz);
+        if (d > 0.001) {
+          mx /= d;
+          mz /= d;
+        }
+        moving = ped.speed;
+        p.x = _v.x;
+        p.z = _v.z;
+      }
+      if (ped.state === 'scatter') {
+        p.x += mx * moving * dt;
+        p.z += mz * moving * dt;
+      }
+      if (moving > 0 && (mx !== 0 || mz !== 0)) {
+        const target = Math.atan2(mx, -mz);
+        ped.angle = angleLerp(ped.angle, target, Math.min(1, dt * 8));
+      }
+      ped.mesh.rotation.y = ped.angle;
+      p.y = groundHeightAt(p.x, p.z) + Math.abs(Math.sin(t * 7 * (moving / 1.2) + ped.phase)) * 0.045;
+      ped.mesh.rotation.z = Math.sin(t * 7 * (moving / 1.2) + ped.phase) * 0.04;
+    }
+  }
+
+  // Put one pedestrian on the ground (a bumper or a bullet did it).
+  knockDown(ped) {
+    if (ped.state === 'down') return;
+    ped.state = 'down';
+    ped.downFor = 0;
+    ped.mesh.rotation.set(-Math.PI / 2, 0, 0);
+    ped.mesh.position.y = groundHeightAt(ped.mesh.position.x, ped.mesh.position.z) + 0.25;
+  }
+
+  // Cars call this through the world: a ped under a moving car goes down.
+  checkCarHits(cars, onPedHit) {
+    for (const ped of this.list) {
+      if (ped.state === 'down') continue;
+      const p = ped.mesh.position;
+      for (const car of cars) {
+        if (Math.abs(car.speed) < 3) continue;
+        const dx = p.x - car.pos.x, dz = p.z - car.pos.z;
+        if (dx * dx + dz * dz < 2.6 * 2.6) {
+          ped.state = 'down';
+          ped.downFor = 0;
+          ped.mesh.rotation.set(-Math.PI / 2, 0, 0);
+          ped.mesh.position.y = groundHeightAt(p.x, p.z) + 0.25;
+          onPedHit(ped, car);
           break;
         }
       }
-      // Turn back at the edges of the world.
-      if (this.pos.x > 186 || this.pos.x < -186 || this.pos.z > 130 || this.pos.z < -186) {
-        this.dir *= -1;
-        if (this.axis === 'x') this.heading = this.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-        else this.heading = this.dir > 0 ? 0 : Math.PI;
-      }
     }
-    this.group.position.x += Math.sin(this.heading) * speed * dt;
-    this.group.position.z += Math.cos(this.heading) * speed * dt;
-    this.group.rotation.y = this.heading;
-    // A little walk cycle: legs swing, body bobs.
-    this.walkPhase += dt * speed * 3.4;
-    const swing = Math.sin(this.walkPhase) * 0.5;
-    this.legL.rotation.x = swing;
-    this.legR.rotation.x = -swing;
-    this.group.position.y = Math.abs(Math.sin(this.walkPhase)) * 0.04;
-  }
-}
-
-export class Peds {
-  constructor(world) {
-    const rng = makeRng(world.seed * 13 + 5);
-    this.rng = rng;
-    this.people = [];
-    for (let i = 0; i < TUNE.pedCount; i++) {
-      this.people.push(new Pedestrian(world.scene, rng));
-    }
-  }
-
-  // A gunshot or a near miss: everyone in earshot runs.
-  startleAll(x, z) {
-    for (const ped of this.people) ped.startle(x, z);
-  }
-
-  update(dt) {
-    for (const ped of this.people) ped.update(dt, this.rng);
   }
 }

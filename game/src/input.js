@@ -1,72 +1,67 @@
-// input.js — keyboard and mouse state for the game. One Input object listens
-// on the window and the canvas; the world polls it each frame. It tracks held
-// keys, keys pressed since the last frame (for one-shot actions like entering
-// a car or pausing), accumulated mouse movement while the pointer is locked,
-// and whether the primary mouse button is down (for shooting).
+// Keyboard and mouse state, gathered in one place so the rest of the game
+// never touches a DOM event. Pointer lock is owned here: the game asks to
+// lock, the browser reports back, and mouse movement accumulates until a
+// system consumes it for the frame.
 
 export class Input {
-  constructor(canvas) {
-    this.canvas = canvas;
-    this.held = new Set();       // KeyboardEvent.code values currently down
-    this.pressedNow = new Set(); // codes that went down since the last clearPressed()
+  constructor(dom) {
+    this.dom = dom;
+    this.keys = new Set();
     this.mouseDX = 0;
     this.mouseDY = 0;
-    this.mouseDown = false;
     this.locked = false;
+    this.clicked = false;      // left mouse went down this frame (shooting)
+    this.onLockLost = null;    // set by the game: fired when lock drops mid-play
 
     addEventListener('keydown', (e) => {
-      if (e.code === 'Space') e.preventDefault(); // keep the page from scrolling
-      if (!e.repeat) this.pressedNow.add(e.code);
-      this.held.add(e.code);
+      if (e.code === 'Space') e.preventDefault();
+      this.keys.add(e.code);
     });
-    addEventListener('keyup', (e) => this.held.delete(e.code));
-    addEventListener('blur', () => { this.held.clear(); this.mouseDown = false; });
+    addEventListener('keyup', (e) => this.keys.delete(e.code));
+    addEventListener('blur', () => this.keys.clear());
 
-    canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 0) this.mouseDown = true;
+    dom.addEventListener('mousedown', (e) => {
+      if (this.locked && e.button === 0) this.clicked = true;
     });
-    addEventListener('mouseup', (e) => {
-      if (e.button === 0) this.mouseDown = false;
-    });
-    document.addEventListener('mousemove', (e) => {
+    addEventListener('mousemove', (e) => {
       if (!this.locked) return;
       this.mouseDX += e.movementX || 0;
       this.mouseDY += e.movementY || 0;
     });
     document.addEventListener('pointerlockchange', () => {
-      this.locked = document.pointerLockElement === canvas;
+      const was = this.locked;
+      this.locked = document.pointerLockElement === dom;
+      if (was && !this.locked && this.onLockLost) this.onLockLost();
     });
   }
 
-  // Ask the browser to lock the pointer to the canvas (mouse look). Browsers
-  // only grant this from a user gesture, so callers invoke it on clicks.
-  requestLock() {
-    if (!this.locked) this.canvas.requestPointerLock?.();
+  lock() {
+    if (!this.locked) this.dom.requestPointerLock?.();
   }
-
-  releaseLock() {
+  unlock() {
     if (this.locked) document.exitPointerLock?.();
   }
-
-  isDown(code) {
-    return this.held.has(code);
+  down(code) {
+    return this.keys.has(code);
   }
-
-  // True only on the frame the key went down. The world clears the set at
-  // the end of every frame with clearPressed().
-  wasPressed(code) {
-    return this.pressedNow.has(code);
+  // WASD as a wish: x = strafe right, z = forward (both -1..1).
+  moveWish() {
+    let x = 0, z = 0;
+    if (this.down('KeyW') || this.down('ArrowUp')) z += 1;
+    if (this.down('KeyS') || this.down('ArrowDown')) z -= 1;
+    if (this.down('KeyA') || this.down('ArrowLeft')) x -= 1;
+    if (this.down('KeyD') || this.down('ArrowRight')) x += 1;
+    return { x, z };
   }
-
-  clearPressed() {
-    this.pressedNow.clear();
-  }
-
-  // Mouse movement since the last call, for camera yaw/pitch.
-  takeMouseDelta() {
-    const d = { x: this.mouseDX, y: this.mouseDY };
+  consumeMouse() {
+    const dx = this.mouseDX, dy = this.mouseDY;
     this.mouseDX = 0;
     this.mouseDY = 0;
-    return d;
+    return { dx, dy };
+  }
+  consumeClick() {
+    const c = this.clicked;
+    this.clicked = false;
+    return c;
   }
 }
