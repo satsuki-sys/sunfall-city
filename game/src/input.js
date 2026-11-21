@@ -1,14 +1,15 @@
-// Keyboard and mouse state, polled by the controllers once per frame. Keys
-// are tracked by event code (KeyW, ArrowUp, ...) so the player's keyboard
-// layout is irrelevant. Beside the held-key set the class records one-shot
-// presses (F to enter a car, H for the horn) and gathers mouse movement for
-// the orbit camera, which runs under pointer lock during play.
+// Keyboard and mouse state, sampled by the controllers once per frame.
+// Keys are tracked by event code (KeyW, ArrowUp, ...) so the player's own
+// keyboard layout never matters. Alongside the set of keys currently held,
+// the class remembers one-shot presses (F climbs into a car, H sounds the
+// horn) and accumulates mouse travel for the orbit camera, which runs
+// under pointer lock while playing.
 
 const SWALLOWED = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'];
 
 export class Input {
   constructor(element) {
-    this.keys = new Set();      // codes held down right now
+    this.keys = new Set();      // codes held down at this moment
     this.pressed = new Set();   // codes that went down since the last frame
     this.mouseDX = 0;
     this.mouseDY = 0;
@@ -50,17 +51,17 @@ export class Input {
     });
   }
 
-  /** True while at least one of the given codes is held. */
+  /** True while any one of the given codes is held down. */
   down(...codes) { return codes.some((c) => this.keys.has(c)); }
 
-  /** True only on the frame a key first goes down; the press is consumed. */
+  /** True only on the frame a key first goes down; reading consumes it. */
   justPressed(code) {
     if (!this.pressed.has(code)) return false;
     this.pressed.delete(code);
     return true;
   }
 
-  /** Call once per frame, after every controller has read what it needs. */
+  /** Call once per frame, once every controller has taken what it needs. */
   endFrame() {
     this.pressed.clear();
     this.mouseDX = 0;

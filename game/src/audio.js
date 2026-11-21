@@ -1,10 +1,10 @@
-// Every sound in Sunfall City is synthesised with WebAudio — there are no
-// audio files at all. A soft island pad drifts underneath everything, and
-// the rest are small oscillator and noise recipes: an engine with audible
-// gear steps, tire screech, a two-tone siren, horns, gunshots, coins.
-// Nothing sounds until start() runs from a user gesture, and every method
-// stays harmless when audio is unavailable (headless screenshot runs never
-// start it).
+// Every sound in Sunfall City is synthesised live with WebAudio — the
+// game ships no audio files at all. Underneath everything drifts a soft
+// island pad; the rest is a kit of small oscillator and noise recipes: an
+// engine with audible gear steps, tire screech, a two-tone siren, horns,
+// gunshots and coin chimes. Nothing sounds until start() runs from a user
+// gesture, and every method degrades quietly when audio is unavailable —
+// headless screenshot runs never start it.
 
 export class SoundBank {
   constructor() {
@@ -34,7 +34,7 @@ export class SoundBank {
     this.#siren();
   }
 
-  /** Two detuned triangles behind a slowly sweeping filter: evening chords. */
+  /** Two detuned triangles behind a slowly breathing filter: dusk chords. */
   #pad() {
     const ctx = this.ctx;
     const gain = ctx.createGain();
@@ -60,7 +60,7 @@ export class SoundBank {
     lfo.start();
   }
 
-  /** A single sawtooth through a lowpass — the engine the gears play through. */
+  /** One sawtooth through a lowpass: the engine the gears will play. */
   #engine() {
     const ctx = this.ctx;
     this.engineOsc = ctx.createOscillator();
@@ -76,9 +76,9 @@ export class SoundBank {
   }
 
   /**
-   * Feed the engine a speed ratio 0..1 while driving, or null to idle it
-   * back to silence. The rev range splits into five gears: pitch sweeps up
-   * inside a gear, then drops as the next one engages — the arcade step.
+   * Drive the engine with a speed ratio 0..1, or pass null to let it fall
+   * silent. The rev range is sliced into five gears: pitch climbs inside
+   * a gear, then drops as the next one engages — the arcade gear step.
    */
   engine(speedRatio) {
     if (!this.ctx || !this.engineOsc) return;
@@ -93,7 +93,7 @@ export class SoundBank {
     const gear = Math.floor(scaled);
     const sweep = scaled - gear;
     const freq = 52 + gear * 17 + sweep * 34;
-    // Gear changes move pitch faster, so the step down lands as a step.
+    // A change of gear moves pitch quicker, so the step down reads as a step.
     const glide = gear !== this.engineGear ? 0.03 : 0.06;
     this.engineGear = gear;
     this.engineOsc.frequency.setTargetAtTime(freq, t, glide);
@@ -101,7 +101,7 @@ export class SoundBank {
     this.engineGain.gain.setTargetAtTime(0.05 + speedRatio * 0.05, t, 0.08);
   }
 
-  /** Looping filtered noise, kept silent until screech() opens its gain. */
+  /** A loop of filtered noise, held silent until screech() opens it up. */
   #screech() {
     const ctx = this.ctx;
     const len = ctx.sampleRate;
@@ -121,13 +121,13 @@ export class SoundBank {
     src.start();
   }
 
-  /** level 0..1 — how hard the tires protest a handbrake slide. */
+  /** level 0..1 — how loudly the tires object to a handbrake slide. */
   screech(level) {
     if (!this.ctx || !this.screechGain) return;
     this.screechGain.gain.setTargetAtTime(level * 0.06, this.ctx.currentTime, 0.05);
   }
 
-  /** A triangle with an LFO rocking its pitch: the classic two-tone wail. */
+  /** A triangle whose pitch an LFO rocks: the classic two-tone wail. */
   #siren() {
     const ctx = this.ctx;
     this.sirenOsc = ctx.createOscillator();
@@ -145,13 +145,13 @@ export class SoundBank {
     this.sirenLFO.start();
   }
 
-  /** level 0..1 — how present the nearest police siren should sound. */
+  /** level 0..1 — how present the closest police siren should sound. */
   siren(level) {
     if (!this.ctx || !this.sirenGain) return;
     this.sirenGain.gain.setTargetAtTime(level * 0.055, this.ctx.currentTime, 0.2);
   }
 
-  /** Shared one-shot: glide from freqA to freqB under a quick decay. */
+  /** The shared one-shot: glide freqA to freqB under a fast decay. */
   #blip(freqA, freqB, seconds, type = 'square', volume = 0.12) {
     if (!this.ctx) return;
     const ctx = this.ctx;
@@ -170,7 +170,7 @@ export class SoundBank {
 
   horn() { this.#blip(370, 340, 0.22, 'square', 0.07); }
   pickup() { this.#blip(660, 990, 0.14, 'sine', 0.14); }
-  /** A brighter two-note sparkle, reserved for the sun discs. */
+  /** A brighter two-note sparkle, kept for the sun discs alone. */
   collect() {
     this.#blip(1040, 1560, 0.12, 'sine', 0.13);
     setTimeout(() => this.#blip(1320, 1980, 0.16, 'sine', 0.11), 60);
@@ -180,7 +180,7 @@ export class SoundBank {
   door() { this.#blip(210, 140, 0.09, 'triangle', 0.12); }
   fail() { this.#blip(300, 130, 0.4, 'sawtooth', 0.1); }
 
-  /** A gunshot: a burst of filtered noise under a fast-falling envelope. */
+  /** A gunshot: filtered noise bursting under a fast-falling envelope. */
   shot() {
     if (!this.ctx) return;
     const ctx = this.ctx;

@@ -1,18 +1,19 @@
 // Sunfall City — the hand-in program for make.fun's gta6-01 bounty.
 // Runtime: Node 22, standard library only.
 //
-// The game itself sits in the game/ folder next to this file: a low-poly 3D
-// open-world crime game that runs entirely offline in a desktop browser.
-// three.js is vendored under game/vendor/, and every other file the game
-// loads is a hand-written ES module. You play Rook, a courier in a coastal
-// city stuck at golden hour: run Marisol's three jobs, steal and drive
-// anything on wheels, dodge or outrun the Sunfall PD, work the Taxi Dash,
-// hunt down the twelve hidden sun discs, and bank cash between sunsets.
+// The game itself lives in the game/ folder beside this file: a low-poly
+// 3D open-world crime game that runs entirely offline in a desktop
+// browser. three.js is vendored under game/vendor/, and every other file
+// the game loads is a hand-written ES module. You play Rook, a courier in
+// a coastal city held at golden hour: run Marisol's three jobs, steal and
+// drive anything on wheels, dodge or outrun the Sunfall PD, work the Taxi
+// Dash, hunt down the twelve hidden sun discs, and bank cash between
+// sunsets.
 //
 // This program does exactly one thing — the hand-in. It copies game/ and
-// screenshots/ from beside itself into the output directory and then writes
-// dossier.json there, the summary the judge reads, using the vendored
-// make.fun library.
+// screenshots/ from beside itself into the output directory and then
+// writes dossier.json there, the summary the judge reads, using the
+// vendored make.fun library.
 //
 // To try the game locally: `node serve.ts`, then open http://localhost:8080.
 // Away from the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
@@ -27,12 +28,12 @@ import { buildDossier } from './vendor/makefun-game.ts';
 const rootDir = fileURLToPath(new URL('.', import.meta.url));
 const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output'; // the grader's mount
 
-// Copy the playable game into the output directory.
+// Copy the playable game into the output directory, folders and all.
 mkdirSync(outDir, { recursive: true });
 cpSync(join(rootDir, 'game'), join(outDir, 'game'), { recursive: true });
 
 // Copy the screenshots. The folder itself is expected to exist in the
-// output; its contents are optional, so guard the copy on the source.
+// output; its contents are optional, so the copy is guarded on the source.
 mkdirSync(join(outDir, 'screenshots'), { recursive: true });
 if (existsSync(join(rootDir, 'screenshots'))) {
   cpSync(join(rootDir, 'screenshots'), join(outDir, 'screenshots'), { recursive: true });

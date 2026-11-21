@@ -1,8 +1,8 @@
-// Sunfall City itself: a sun-soaked coastal grid built procedurally —
-// pastel towers with lit windows under a gradient sunset sky, palm-lined
-// avenues, named places of interest carrying hand-lettered signs, then a
-// boardwalk, a beach and a shimmering sea to the south. Everything here is
-// geometry and canvas textures made on the spot; nothing loads from disk.
+// Sunfall City itself: a sun-soaked coastal grid raised procedurally —
+// pastel towers with lit windows beneath a gradient sunset sky, palm-lined
+// avenues, named landmarks carrying hand-lettered signs, and to the south
+// a boardwalk, a beach and a shimmering sea. Everything here is geometry
+// and canvas textures painted on the spot; nothing is loaded from disk.
 
 import * as THREE from 'three';
 import { CITY, PALETTE, avenueLines, blockCentres } from './config.js';
@@ -17,7 +17,7 @@ export const POIS = {
   carLot:    { x: 132,  z: 176,  name: 'Shoreline Motors' },
 };
 
-/** Which block (by grid index "bi,bj") hosts which landmark, and its look. */
+/** Which block (grid index "bi,bj") hosts which landmark, and how it looks. */
 const POI_BY_BLOCK = new Map([
   ['2,2', { poi: 'cafe', h: 11, tint: 0xf2b879 }],
   ['8,3', { poi: 'garage', h: 9, tint: 0x9fb7c9 }],
@@ -36,9 +36,9 @@ const SHOP_SIGNS = [
 
 const CENTRES = blockCentres();
 
-/** Walkable ground height at a point: block slabs sit 0.3 above the street. */
+/** Walkable ground height at a point: block slabs ride 0.3 above the street. */
 export function groundHeightAt(x, z) {
-  // The pier deck stands over the water out at Palms Pier.
+  // Out at Palms Pier the deck stands over the water.
   if (Math.abs(x - POIS.pier.x) < 5 && z > CITY.waterZ - 4 && z < CITY.waterZ + 48) return 0.7;
   if (z > CITY.beachZ - 8) return 0;
   const nearest = (v) => CENTRES[Math.max(0, Math.min(CITY.blocks - 1, Math.round((v + CITY.half - CITY.pitch / 2) / CITY.pitch)))];
@@ -48,7 +48,7 @@ export function groundHeightAt(x, z) {
   return 0;
 }
 
-/** A canvas wrapped as a texture; the `draw` callback paints it. */
+/** A canvas wrapped up as a texture; the `draw` callback paints it. */
 function canvasTexture(w, h, draw) {
   const canvas = document.createElement('canvas');
   canvas.width = w;
@@ -62,10 +62,10 @@ function canvasTexture(w, h, draw) {
 
 /**
  * One building facade plus its emissive twin. The facade pass paints the
- * plaster and a grid of windows, remembering which ones are lit; the
- * emissive pass repaints exactly those windows warm, so towers glow at
- * dusk. `variant` varies the window grid and plaster tone, so no two
- * streets look like they were stamped from the same mould.
+ * plaster and a grid of windows, noting which ones are lit; the emissive
+ * pass repaints exactly those windows warm, so the towers glow at dusk.
+ * `variant` shifts the window grid and the plaster tone, so no two streets
+ * read as though they were stamped from the same mould.
  */
 function facadeTextures(variant) {
   const cols = 5 + variant;          // 5, 6 or 7 windows across
@@ -117,7 +117,7 @@ function signTexture(text, bg, fg) {
   return tex;
 }
 
-/** Palm fronds: nine arcing strokes across a transparent canvas. */
+/** Palm fronds: nine arcing strokes fanned across a transparent canvas. */
 function frondTexture() {
   const tex = canvasTexture(128, 128, (g) => {
     g.clearRect(0, 0, 128, 128);
@@ -138,7 +138,7 @@ function frondTexture() {
   return tex;
 }
 
-/** A soft radial glow texture — lamp halos, the sun's aura, disc shine. */
+/** A soft radial glow — lamp halos, the sun's aura, a disc's shine. */
 export function glowTexture() {
   const tex = canvasTexture(128, 128, (g) => {
     const grad = g.createRadialGradient(64, 64, 2, 64, 64, 64);
@@ -152,7 +152,7 @@ export function glowTexture() {
   return tex;
 }
 
-/** The sunset sky, painted as a vertical gradient on a canvas strip. */
+/** The sunset sky, painted as a vertical gradient down a canvas strip. */
 function skyTexture() {
   const tex = canvasTexture(4, 512, (g) => {
     const grad = g.createLinearGradient(0, 0, 0, 512);
@@ -169,7 +169,7 @@ function skyTexture() {
   return tex;
 }
 
-/** Sea sparkle: a teal field flecked with pale streaks catching the sun. */
+/** Sea sparkle: a teal field flecked with pale streaks that catch the sun. */
 function waterTexture() {
   const tex = canvasTexture(256, 256, (g) => {
     g.fillStyle = '#2e8fa3';
@@ -189,8 +189,8 @@ export function buildCity(scene, rng) {
   const facades = [facadeTextures(0), facadeTextures(1), facadeTextures(2)];
   const glowTex = glowTexture();
   const tints = [0xf7f3ea, 0xf2c9a0, 0xe8836b, 0x9fd4c5, 0xf2e3c6, 0xd96c85, 0xa8c6df, 0xf2d16b];
-  // Every tint takes one of the three facade variants, so window grids vary
-  // from tower to tower instead of repeating one stamp.
+  // Each tint is paired with one of the three facade variants, so window
+  // grids vary from tower to tower rather than repeating a single stamp.
   const materials = tints.map((tint, i) => {
     const f = facades[i % facades.length];
     return new THREE.MeshStandardMaterial({
@@ -202,7 +202,7 @@ export function buildCity(scene, rng) {
   const awningMats = [0xc94f30, 0x2a7f76, 0xe8a13a, 0x7a4a6e].map(
     (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 }),
   );
-  // A single unit box, pivoted at its base, scaled into every building.
+  // One unit box, pivoted at its base, scaled into every building.
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
   boxGeo.translate(0, 0.5, 0);
 
@@ -214,7 +214,7 @@ export function buildCity(scene, rng) {
     mesh.receiveShadow = true;
     scene.add(mesh);
     colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
-    // Taller towers get a pale cornice to catch the last of the sun.
+    // Taller towers earn a pale cornice to catch the last of the sun.
     if (h > 14) {
       const trim = new THREE.Mesh(boxGeo, roofMat);
       trim.scale.set(w * 1.04, 0.5, d * 1.04);

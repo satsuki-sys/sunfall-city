@@ -1,10 +1,10 @@
 // The player: a courier in a teal shirt. On foot they walk and sprint with
 // swinging arms, turn with the camera, and collide with walls and cars; F
 // climbs into the nearest car — hot-wiring a stranger's ride is a crime
-// when someone sees it — and F again climbs out. The camera rides a soft
-// orbit rig that follows behind, pulls in rather than clipping through
-// roofs, and leans into a drive with a look-ahead and a speed FOV kick,
-// while also aiming the gun.
+// when somebody sees it — and F again climbs back out. The camera rides a
+// soft orbit rig that follows behind, pulls in rather than clipping
+// through roofs, leans into a drive with a look-ahead and a speed FOV
+// kick, and doubles as the gun's aim.
 
 import * as THREE from 'three';
 import { CITY, PLAYER } from './config.js';
@@ -61,7 +61,7 @@ export class Player {
     this.#walk(dt, world, input);
   }
 
-  /** Driving: the shared stepCar physics, driven by the driving keys. */
+  /** Driving: the shared stepCar physics, fed by the driving keys. */
   #drive(dt, world, input) {
     const car = this.car;
     const throttle = input.axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp']);
@@ -114,7 +114,7 @@ export class Player {
       this.phase += dt * (sprint ? 11 : 8);
     }
     [this.x, this.z] = resolveCircle(this.x, this.z, PLAYER.radius, world.colliders);
-    // Cars are solid as well: slide out of any overlap.
+    // Cars are solid too: slide out of any overlap.
     for (const car of world.cars) {
       const d = dist2d(this.x, this.z, car.x, car.z);
       const min = car.spec.len * 0.42;
@@ -165,8 +165,8 @@ export class CameraRig {
       (world.playerVehicle ? world.playerVehicle.mesh.position.y + 1.3 : groundHeightAt(world.playerPos.x, world.playerPos.z) + 1.6),
       world.playerPos.z,
     );
-    // Driving, the camera looks a little way up the road the car is actually
-    // travelling: the frame leads the car instead of chasing it.
+    // Driving, the camera looks a little way up the road the car is
+    // actually travelling: the frame leads the car instead of chasing it.
     if (driving) {
       const car = world.playerVehicle;
       target.x += Math.sin(car.heading) * car.speed * 0.16;

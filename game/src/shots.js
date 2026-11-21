@@ -1,9 +1,9 @@
-// Screenshot staging, behind ?shot=cover|drive|chase|mission. Each scene is
-// posed inside the same seeded world, then the real simulation is stepped
-// for a couple of seconds at a small render size — headless staging stays
-// fast that way — before the frame is restored to full size, rendered once
-// and flagged ready. The screenshots are the game's own renders; nothing
-// is composited into them.
+// Screenshot staging, behind ?shot=cover|drive|chase|mission. Each scene
+// is posed inside the same seeded world, then the real simulation is
+// stepped for a couple of seconds at a small render size — headless
+// staging stays fast that way — before the frame is restored to full
+// size, rendered once and flagged ready. The screenshots are the game's
+// own renders; nothing is composited into them.
 
 import { POIS } from './city.js';
 import { createCar } from './vehicles.js';

@@ -1,26 +1,27 @@
-// Sunfall City — every tuning number for the game lives in this module.
-// Metres and seconds everywhere. The city is a square grid of avenues:
-// CITY.blocks blocks to a side, centrelines CITY.pitch metres apart, streets
-// CITY.roadWide wide between building plots. High z is the south edge, where
-// the grid gives way to the boardwalk, the beach and the sea.
+// Sunfall City — the single home for every tuning constant in the game.
+// All distances are metres, all durations seconds. Downtown is a square
+// lattice of avenues: CITY.blocks blocks along each side, avenue
+// centrelines CITY.pitch metres apart, and CITY.roadWide metres of street
+// between the building plots. Large z is the southern edge of the grid,
+// where the streets give way to boardwalk, sand and open water.
 
 export const CITY = {
-  blocks: 11,          // blocks per side
-  pitch: 44,           // spacing between avenue centrelines
-  roadWide: 14,        // street width
-  get half() { return (this.blocks * this.pitch) / 2; }, // 242 — the grid spans -242..242
-  beachZ: 252,         // boardwalk and sand begin at this z
-  waterZ: 292,         // the sea begins at this z
+  blocks: 11,          // blocks along one side of the grid
+  pitch: 44,           // centreline-to-centreline spacing of the avenues
+  roadWide: 14,        // width of a street, plot edge to plot edge
+  get half() { return (this.blocks * this.pitch) / 2; }, // 242: the grid spans -242..242
+  beachZ: 252,         // z where the boardwalk and the sand begin
+  waterZ: 292,         // z where the sea takes over
 };
 
-/** The avenue centrelines, identical on both axes: -242, -198, ..., 242. */
+/** Centreline coordinates of every avenue, the same on both axes. */
 export function avenueLines() {
   const lines = [];
   for (let i = 0; i <= CITY.blocks; i += 1) lines.push(-CITY.half + i * CITY.pitch);
   return lines;
 }
 
-/** The centres of the block plots between the avenues: -220, -176, ..., 220. */
+/** Centre coordinates of the block plots that sit between the avenues. */
 export function blockCentres() {
   const centres = [];
   for (let i = 0; i < CITY.blocks; i += 1) centres.push(-CITY.half + (CITY.pitch / 2) + i * CITY.pitch);
@@ -32,7 +33,7 @@ export const PLAYER = {
   walkSpeed: 5.2,
   sprintSpeed: 8.6,
   health: 100,
-  reachCar: 3.4,       // the F key still works this far from a car door
+  reachCar: 3.4,       // how far from a car door the F key still works
 };
 
 export const CAR_TYPES = {
@@ -43,7 +44,7 @@ export const CAR_TYPES = {
   police: { len: 4.4, wid: 1.95, maxSpeed: 37, accel: 17, health: 140 },
 };
 
-/** Civilian paint jobs: sun-bleached pastels with a few loud ones mixed in. */
+/** Civilian paint: mostly sun-bleached pastels, a few loud ones stirred in. */
 export const CAR_COLORS = [
   0xf2e3c6, 0xe8836b, 0x63b3a6, 0xf2c14e, 0x7fb2d9, 0xd96c85,
   0x9bc53d, 0xf7f3ea, 0x5b8e7d, 0xe4572e, 0x8d99ae, 0x2a9d8f,
@@ -51,21 +52,21 @@ export const CAR_COLORS = [
 
 export const WANTED = {
   max: 5,
-  decaySeconds: 26,    // quiet time with no fresh crime before a star fades
+  decaySeconds: 26,    // quiet seconds, no fresh crime, before a star fades
   policeByStars: [0, 1, 2, 3, 4, 5],
 };
 
-/** Sun discs: the twelve golden collectibles hidden around the city. */
+/** The sun discs: twelve golden collectibles hidden around the city. */
 export const PACKAGES = {
   count: 12,
-  reward: 25,          // cash paid per disc picked up
-  fullBonus: 250,      // bonus for completing the whole set
-  radius: 2.6,         // pickup range, measured from the player
+  reward: 25,          // cash for each disc picked up
+  fullBonus: 250,      // extra cash for completing the set
+  radius: 2.6,         // pickup distance from the player
 };
 
 export const SAVE_KEY = 'sunfall-city.save.v1';
 
-/** The golden-hour palette — the game is lit like 6:40 pm on the coast. */
+/** The golden-hour palette: the whole game is lit like 6:40 pm seaside. */
 export const PALETTE = {
   sky: 0xffc98a,
   fog: 0xf6a96b,

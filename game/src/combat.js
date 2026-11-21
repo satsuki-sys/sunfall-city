@@ -1,8 +1,8 @@
 // Combat: the player's handgun — hitscan down the camera's aim, with a
 // tracer and a dust puff wherever the round lands — and the armed guards
-// who shoot back during the story. Each shot is a crime the city can hear,
-// and each hit lands somewhere specific: a pedestrian, a guard, a car, or
-// a wall.
+// who shoot back during the story. Every shot is a crime the city can
+// hear, and every hit lands somewhere specific: a pedestrian, a guard, a
+// car, or a wall.
 
 import * as THREE from 'three';
 import { dist2d } from './random.js';
@@ -25,7 +25,7 @@ export class Guard {
     this.z = z;
     this.heading = heading;
     this.health = 60;
-    this.active = false;   // the story stage that needs him sets this
+    this.active = false;   // the story stage that needs him switches this on
     this.dead = false;
     this.cooldown = 1.2;
   }
@@ -92,7 +92,7 @@ export class Combat {
     world.reportCrime('shot', world.playerPos);
 
     // Walk every candidate and keep the nearest thing the ray touches:
-    // pedestrians, guards, cars, and buildings in that scan order.
+    // pedestrians, guards, cars and buildings, in that scan order.
     let bestT = 90;
     let hit = null;
     const consider = (t, what) => { if (t < bestT) { bestT = t; hit = what; } };
@@ -111,7 +111,7 @@ export class Combat {
       consider(raySphere(origin, dir, centre, car.spec.len * 0.52), { kind: 'car', car });
     }
     for (const box of world.colliders) {
-      // Cheap building stop: a sphere parked at the AABB's centre.
+      // A cheap building stop: a sphere parked at the AABB's centre.
       const cx = (box.minX + box.maxX) / 2;
       const cz = (box.minZ + box.maxZ) / 2;
       const r = Math.max(box.maxX - box.minX, box.maxZ - box.minZ) / 2;

@@ -1,7 +1,7 @@
 // The Game: owns the renderer, the city, every actor, and the rules that
-// bind them — crime and wanted, damage and death, busts, effects, the
-// camera and the HUD. main.js drives the screens; shots.js stages scenes
-// for the camera; everything else lives here.
+// bind them together — crime and the wanted level, damage and death,
+// busts, effects, the camera and the HUD. main.js drives the screens and
+// shots.js stages scenes for the camera; everything else lives here.
 
 import * as THREE from 'three';
 import { PACKAGES, PALETTE, WANTED } from './config.js';
@@ -20,10 +20,10 @@ import { SoundBank } from './audio.js';
 import { Input } from './input.js';
 import { loadSave, writeSave } from './save.js';
 
-/** The stars each crime is worth when somebody witnesses it. */
+/** How many stars each crime is worth when somebody witnesses it. */
 const CRIME_STARS = { shot: 1, theft: 1, hitCar: 1, grandTheft: 2, hitPed: 2, score: 2, hitPolice: 3 };
 
-/** Seconds of standing still beside an officer that end in an arrest. */
+/** Seconds spent standing still beside an officer that end in an arrest. */
 const BUST_SECONDS = 2.5;
 
 export class Game {
@@ -49,7 +49,7 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 1600);
     this.camera.position.set(-140, 8, -130);
 
-    // --- Light: a warm hemisphere wash and the low golden-hour sun ------------
+    // --- Light: a warm hemisphere wash under the low golden-hour sun ----------
     const hemi = new THREE.HemisphereLight(0xffd9a8, 0x7a5c48, 0.95);
     this.scene.add(hemi);
     this.sun = new THREE.DirectionalLight(0xffdf9e, 1.75);
@@ -63,7 +63,7 @@ export class Game {
     this.sun.shadow.bias = -0.0006;
     this.scene.add(this.sun, this.sun.target);
 
-    // --- The city and the player's instruments --------------------------------
+    // --- The city, and the instruments the player reads -----------------------
     const city = buildCity(this.scene, makeRng(4242));
     this.city = city;
     this.colliders = city.colliders;
@@ -74,7 +74,7 @@ export class Game {
     this.minimap = new Minimap(document.getElementById('minimap'));
     this.cameraRig = new CameraRig(this.camera);
 
-    // --- Actors and game state --------------------------------------------------
+    // --- Actors and the state of the run ---------------------------------------
     this.player = new Player(this.scene, this.rng);
     this.cars = [];
     this.peds = [];
@@ -108,7 +108,7 @@ export class Game {
     });
   }
 
-  /** Fill the city: parked cars (one of them the Vireo GT), traffic, crowds. */
+  /** Stock the city: parked cars (one of them the Vireo GT), traffic, crowds. */
   #populate(city) {
     const rng = this.rng;
     const lotSpots = city.parkedSpots.filter((s) => s.lot);
@@ -135,7 +135,7 @@ export class Game {
       this.cars.push(car);
     }
 
-    // Moving traffic, spawned well clear of the player's start.
+    // Moving traffic, spawned well clear of where the player starts.
     const trafficColors = [0xf2e3c6, 0xe8836b, 0x63b3a6, 0x7fb2d9, 0xf7f3ea];
     for (let i = 0; i < 13; i += 1) {
       let x = 0;
@@ -158,7 +158,7 @@ export class Game {
 
   shake(t) { this.cameraRig.shake(t); }
 
-  /** A traffic honk carries only when it happens near the player. */
+  /** A traffic honk is audible only when it happens near the player. */
   onHonk(car) {
     if (dist2d(car.x, car.z, this.playerPos.x, this.playerPos.z) < 32) this.audio.horn();
   }
@@ -195,7 +195,7 @@ export class Game {
     if (n > 0) this.audio.cash();
   }
 
-  /** A crime raises the wanted level only if someone could have seen it. */
+  /** A crime raises the wanted level only when someone could have seen it. */
   reportCrime(kind, pos, guaranteed = false) {
     if (this.state !== 'playing') return;
     const seenByPolice = this.police.nearestDistance(pos) < 48;
@@ -243,7 +243,7 @@ export class Game {
     this.saveGame();
   }
 
-  /** A tracer: one bright line between two points, gone in a blink. */
+  /** A tracer: a single bright line between two points, gone in a blink. */
   spawnTracer(a, b, color) {
     const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
     const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
@@ -252,7 +252,7 @@ export class Game {
     this.effects.push({ obj: line, life: 0.07, max: 0.07, kind: 'tracer' });
   }
 
-  /** A puff: a few soft spheres that drift, swell and fade. */
+  /** A puff: a handful of soft spheres that drift, swell and fade. */
   spawnPuff(pos, color, count = 3, power = 1) {
     for (let i = 0; i < count; i += 1) {
       const mesh = new THREE.Mesh(PuffGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, depthWrite: false }));
@@ -301,7 +301,7 @@ export class Game {
 
   #updateCrimesAndConsequences(dt) {
     // Wanted decay: the clock runs only while no fresh crime lands and no
-    // officer is near enough to keep the heat on.
+    // officer is close enough to keep the heat on.
     if (this.wanted > 0) {
       if (this.police.nearestDistance(this.playerPos) < 26) this.crimeTimer = Math.max(this.crimeTimer, 2);
       this.crimeTimer -= dt;

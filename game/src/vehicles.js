@@ -1,8 +1,8 @@
-// Cars: low-poly, box-built vehicles — sedans, sports cars, taxis, trucks
-// and police interceptors — plus the arcade physics every driver shares.
-// Player, traffic and police all steer through stepCar, which is what
-// keeps a chase fair. At dusk every car wears halo sprites on its lamps,
-// and the tail lights flare whenever the driver brakes.
+// Cars: low-poly vehicles built from boxes — sedans, sports cars, taxis,
+// trucks and police interceptors — plus the arcade physics every driver
+// shares. Player, traffic and police all steer through stepCar, which is
+// what keeps a chase fair. At dusk every car wears halo sprites on its
+// lamps, and the tail lights flare for as long as the driver brakes.
 
 import * as THREE from 'three';
 import { CAR_TYPES } from './config.js';
@@ -10,7 +10,7 @@ import { clamp } from './random.js';
 import { groundHeightAt, glowTexture } from './city.js';
 
 let sharedGlowTex = null;
-/** The radial glow texture, built once and shared by all lamp sprites. */
+/** The radial glow texture, built once and shared by every lamp sprite. */
 function glowTex() {
   if (!sharedGlowTex) sharedGlowTex = glowTexture();
   return sharedGlowTex;
@@ -83,7 +83,7 @@ export function makeCarMesh(type, color) {
     bar.position.set(0, 1.45, -spec.len * 0.04);
     g.add(bar);
     g.userData.flash = [red.material, blue.material];
-    // Halos over the bar, pulsed by the police driver in time with the strobe.
+    // Halos over the bar, pulsed by the police driver in step with the strobe.
     const redGlow = lampGlow(0xff5040, 1.7, 0.5);
     redGlow.position.set(-0.28, 1.5, -spec.len * 0.04);
     const blueGlow = lampGlow(0x4d8dff, 1.7, 0.06);
@@ -105,11 +105,11 @@ export function makeCarMesh(type, color) {
   const tailGlow = lampGlow(0xff4030, 0.85, 0.3);
   tailGlow.position.set(0, 0.7, -spec.len / 2 - 0.26);
   g.add(tailGlow);
-  // stepCar flares these two while the driver is on the brake.
+  // stepCar flares these two for as long as the driver is on the brake.
   g.userData.tailGlow = tailGlow.material;
   g.userData.tailMat = tailLights.material;
 
-  // One shared wheel geometry and material; the front pair also steers.
+  // One shared wheel geometry and material; the front pair steers as well.
   const wheelGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.24, 10);
   wheelGeo.rotateZ(Math.PI / 2);
   const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1c1f24, roughness: 0.9 });
@@ -138,7 +138,7 @@ export function createCar(scene, type, color, x, z, heading) {
     health: spec.health,
     maxHealth: spec.health,
     driver: null,        // 'player' | 'traffic' | 'police' | 'parked'
-    lastImpact: 0,       // speed a wall ate this step (the world reads it)
+    lastImpact: 0,       // speed a wall swallowed this step (the world reads it)
     honkCooldown: 0,
     dead: false,
   };
@@ -160,7 +160,7 @@ export function resolveCircle(x, z, r, colliders) {
       x = nx + (dx / d) * r;
       z = nz + (dz / d) * r;
     } else {
-      // The centre sits inside the box: leave by the shallowest face.
+      // The centre is inside the box: leave by the shallowest face.
       const left = x - c.minX;
       const right = c.maxX - x;
       const top = z - c.minZ;
@@ -177,9 +177,9 @@ export function resolveCircle(x, z, r, colliders) {
 
 /**
  * Advance one car by a step. control: {throttle -1..1, steer -1..1, brake}.
- * Collisions are circles at the nose and tail against buildings, plus a
- * soft push against other cars. Sets car.lastImpact when a wall eats
- * speed, and flares the tail lights for as long as the brake is held.
+ * Collisions are circles riding at the nose and tail against buildings,
+ * plus a soft push against other cars. Sets car.lastImpact when a wall
+ * eats speed, and flares the tail lights while the brake is held.
  */
 export function stepCar(car, control, dt, colliders, cars) {
   const spec = car.spec;
@@ -233,7 +233,7 @@ export function stepCar(car, control, dt, colliders, cars) {
     }
   }
 
-  // Other cars: a soft push apart, with damage charged to the faster one.
+  // Other cars: a soft push apart, damage charged to the faster one.
   for (const other of cars) {
     if (other === car) continue;
     const dx = car.x - other.x;

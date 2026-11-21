@@ -81,7 +81,7 @@ export class PoliceForce {
     const dist = world.rng.range(52, 72);
     const x = clamp(p.x + Math.sin(angle) * dist, -230, 230);
     const z = clamp(p.z + Math.cos(angle) * dist, -230, 230);
-    // Snap onto the nearest avenue so the unit arrives by road.
+    // Snap onto the nearest avenue, so the unit arrives by road.
     const sx = nearestAvenue(x);
     const car = createCar(this.scene, 'police', 0xffffff, sx, z, Math.atan2(p.x - sx, p.z - z));
     car.driver = 'police';

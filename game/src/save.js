@@ -1,9 +1,9 @@
-// Persistence, deliberately tiny: one localStorage key holds the whole save —
-// cash, story progress, lifetime taxi fares, the sun discs collected so far,
-// and where the player left off. The game writes it on mission completions,
-// disc pickups and pauses, and the title screen's Continue button reads it
-// back. A missing or corrupt save is never an error; it just means a fresh
-// game starts instead.
+// Saving, kept deliberately small: a single localStorage key carries the
+// whole record — cash, story progress, lifetime taxi fares, which sun
+// discs have been collected, and where the player was standing. The game
+// writes on mission completions, disc pickups and pauses; the title
+// screen's Continue button reads it back. A missing or corrupt save is
+// never an error — it simply means a fresh game.
 
 import { SAVE_KEY } from './config.js';
 
@@ -23,7 +23,7 @@ export function writeSave(data) {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch {
-    // Private browsing or a full store: the run continues, unsaved.
+    // Private mode or a full store: play continues, just unsaved.
   }
 }
 
@@ -31,6 +31,6 @@ export function clearSave() {
   try {
     localStorage.removeItem(SAVE_KEY);
   } catch {
-    // Nothing was there to clear.
+    // There was nothing stored to clear.
   }
 }

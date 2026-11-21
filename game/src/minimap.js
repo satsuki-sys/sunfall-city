@@ -1,12 +1,13 @@
-// The minimap: a north-up canvas plot of the avenue grid, the beach and the
-// sea, carrying blips for the player, the player's car, the police, the sun
-// discs still out there, and whatever the current objective points at. It is
-// redrawn from live positions every frame, so it keeps no state of its own
-// between frames. The legend rendered beside the map names each marker.
+// The minimap: a north-up canvas plot of the avenue grid, the beach and
+// the sea, carrying blips for the player, the player's own car, the
+// police, the sun discs still waiting out there, and whatever the current
+// objective points at. It redraws from live positions every frame and so
+// keeps no state of its own between frames. The legend beside the map, in
+// index.html, names each marker.
 
 import { CITY, avenueLines } from './config.js';
 
-const SIZE = 184;             // canvas edge in pixels
+const SIZE = 184;             // canvas edge, in pixels
 const SPAN = 620;             // world metres shown across the map
 const SCALE = SIZE / SPAN;
 const ORIGIN = -270;          // world x/z that lands on the map's top-left
@@ -28,7 +29,7 @@ export class Minimap {
     g.arc(SIZE / 2, SIZE / 2, SIZE / 2 - 1, 0, Math.PI * 2);
     g.clip();
 
-    // Ground: land as the base, a band of beach, then the sea down south.
+    // Ground: land first, then a band of beach, then the sea to the south.
     g.fillStyle = '#274b3a';
     g.fillRect(0, 0, SIZE, SIZE);
     g.fillStyle = '#e8d29a';
@@ -36,7 +37,7 @@ export class Minimap {
     g.fillStyle = '#2e8fa3';
     g.fillRect(0, mapZ(CITY.waterZ), SIZE, SIZE - mapZ(CITY.waterZ));
 
-    // Roads: one stroke for every avenue, drawn on both axes.
+    // Roads: one stroke per avenue, drawn along both axes.
     g.strokeStyle = '#565e68';
     g.lineWidth = Math.max(2, CITY.roadWide * SCALE);
     for (const a of this.avenues) {
@@ -44,7 +45,7 @@ export class Minimap {
       g.beginPath(); g.moveTo(0, mapZ(a)); g.lineTo(SIZE, mapZ(a)); g.stroke();
     }
 
-    // Uncollected sun discs: small steady amber dots — treasure, not alarm.
+    // Sun discs not yet collected: small, steady amber dots — treasure, not alarm.
     const discs = world.missions?.discs;
     if (discs) {
       g.fillStyle = '#ffb02e';
@@ -56,7 +57,7 @@ export class Minimap {
       }
     }
 
-    // Police blips, alternating blue and red like the light bars do.
+    // Police blips, alternating blue and red the way the light bars do.
     const flashBlue = Math.floor(performance.now() / 280) % 2 === 0;
     for (const car of world.cars) {
       if (car.driver !== 'police' || car.health <= 0) continue;
@@ -104,8 +105,8 @@ export class Minimap {
 
 /** Convert a world heading (0 = +z/south, growing toward +x/east) for canvas. */
 function headingToMap(heading) {
-  // Canvas y runs downward (south) and x rightward (east), so a heading of 0
-  // already points down the map and PI/2 points right: the up-arrow rotates
-  // by the heading exactly as it stands.
+  // Canvas y runs downward (south) and x rightward (east), so a heading of
+  // 0 already points down the map and PI/2 points right: the up-arrow takes
+  // the heading exactly as it stands.
   return heading;
 }

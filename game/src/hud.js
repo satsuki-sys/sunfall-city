@@ -1,9 +1,9 @@
-// The HUD is plain DOM floating over the canvas: health, cash and the
-// sun-disc tally at the top left, wanted stars at the top right, the mission
-// objective centred under the top edge, a queue of story banners, an
-// interaction prompt, a speedometer, a bust meter that fills while the law
-// closes in on foot, and a damage vignette. Every setter remembers the last
-// value it wrote, so a readout that has not changed never touches the DOM.
+// The HUD is ordinary DOM floating above the canvas: health, cash and the
+// sun-disc tally at top left; wanted stars at top right; the mission
+// objective centred just under the top edge; a queue of story banners; an
+// interaction prompt; a speedometer; a bust meter that fills while the law
+// closes in on foot; and a damage vignette. Each setter remembers the last
+// value it wrote, so an unchanged readout never touches the DOM.
 
 export class Hud {
   constructor() {
@@ -52,7 +52,7 @@ export class Hud {
     this.cashEl.textContent = `$${Math.floor(n).toLocaleString('en-US')}`;
   }
 
-  /** The tally under the cash line: discs found out of the city's total. */
+  /** The tally beneath the cash line: discs found, out of the city's total. */
   setPackages(found, total) {
     if (found === this.lastPackages) return;
     this.lastPackages = found;
@@ -67,7 +67,7 @@ export class Hud {
     this.starsEl.style.opacity = n === 0 ? '0.25' : '1';
   }
 
-  /** The bust meter stays hidden until it starts to fill (frac > 0). */
+  /** The bust meter stays out of sight until it begins to fill (frac > 0). */
   setBust(frac) {
     const shown = frac > 0.01;
     const rounded = Math.round(frac * 40);
@@ -116,7 +116,7 @@ export class Hud {
 
   damageFlash() { this.vignette = 0.75; }
 
-  /** Tick the banner queue, the toast fade and the damage vignette. */
+  /** Advance the banner queue, the toast fade and the damage vignette. */
   update(dt) {
     if (this.bannerTimer > 0) {
       this.bannerTimer -= dt;

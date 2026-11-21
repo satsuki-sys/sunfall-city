@@ -1,5 +1,5 @@
 // Missions: a three-job story for Rook, a courier who owes the city a
-// favour, the repeatable Taxi Dash running on the side, and a trail of
+// favour, the repeatable Taxi Dash running alongside it, and a trail of
 // twelve golden sun discs hidden around the city for anyone who explores.
 // Marisol at Café Solano hands the work out by phone banner; a gold beacon
 // marks the way, and the minimap target follows it.

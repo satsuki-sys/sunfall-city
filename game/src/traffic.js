@@ -1,10 +1,10 @@
 // Traffic: civilian cars cruising the avenue grid on the correct side of
-// the road. They pick turns at intersections, follow the car ahead at a
-// smooth distance instead of slamming between pedals, ease off early when
-// cross traffic is moving through the junction in front of them, and honk
-// when the player blocks them past their patience. Each driver is a small
-// state machine steering at a point a little ahead on its lane, with its
-// own personal patience for being stuck.
+// the road. They choose turns at intersections, follow the car ahead at a
+// smooth distance instead of slamming between the pedals, ease off early
+// when cross traffic is moving through the junction ahead, and honk when
+// the player blocks them beyond their patience. Each driver is a small
+// state machine steering at a point a little way ahead on its lane, with
+// a personal patience for being stuck.
 
 import { avenueLines } from './config.js';
 import { angleDelta, clamp, dist2d } from './random.js';
@@ -26,7 +26,7 @@ export class TrafficDriver {
   constructor(car, rng) {
     this.car = car;
     this.rng = rng;
-    // Settle onto the nearest avenue and choose a direction along it.
+    // Settle onto the nearest avenue and pick a direction along it.
     if (rng.chance(0.5)) {
       this.line = nearest(car.z);
       this.dirX = rng.chance(0.5) ? 1 : -1;
@@ -77,7 +77,7 @@ export class TrafficDriver {
     const steer = clamp(angleDelta(car.heading, want) * 2.2, -1, 1);
 
     // Car-following: settle toward the speed that holds roughly a 7 m gap
-    // to whatever is slow ahead, rather than alternating full throttle and
+    // to whatever runs slow ahead, instead of alternating full throttle and
     // full brake. A gap that is genuinely closing still earns the brake.
     const fwdX = Math.sin(car.heading);
     const fwdZ = Math.cos(car.heading);
