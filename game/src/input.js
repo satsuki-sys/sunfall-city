@@ -1,67 +1,46 @@
-// Keyboard and mouse state, gathered in one place so the rest of the game
-// never touches a DOM event. Pointer lock is owned here: the game asks to
-// lock, the browser reports back, and mouse movement accumulates until a
-// system consumes it for the frame.
+// input.js — keyboard and mouse state for the game. The rest of the code asks
+// questions ("is W held?", "was F just pressed?", "how far did the mouse
+// move?") and never touches DOM events itself.
 
 export class Input {
-  constructor(dom) {
-    this.dom = dom;
+  constructor(canvas) {
     this.keys = new Set();
+    this.pressed = new Set();       // codes that went down since last frame
     this.mouseDX = 0;
     this.mouseDY = 0;
+    this.mouseDown = false;
+    this.clicked = false;           // left button pressed since last frame
     this.locked = false;
-    this.clicked = false;      // left mouse went down this frame (shooting)
-    this.onLockLost = null;    // set by the game: fired when lock drops mid-play
 
     addEventListener('keydown', (e) => {
-      if (e.code === 'Space') e.preventDefault();
+      if (!e.repeat) this.pressed.add(e.code);
       this.keys.add(e.code);
+      if (['ArrowUp', 'ArrowDown', 'Space'].includes(e.code)) e.preventDefault();
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
-    addEventListener('blur', () => this.keys.clear());
+    addEventListener('blur', () => { this.keys.clear(); this.mouseDown = false; });
 
-    dom.addEventListener('mousedown', (e) => {
-      if (this.locked && e.button === 0) this.clicked = true;
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 0) { this.mouseDown = true; this.clicked = true; }
     });
+    addEventListener('mouseup', (e) => { if (e.button === 0) this.mouseDown = false; });
     addEventListener('mousemove', (e) => {
-      if (!this.locked) return;
-      this.mouseDX += e.movementX || 0;
-      this.mouseDY += e.movementY || 0;
+      if (this.locked) { this.mouseDX += e.movementX || 0; this.mouseDY += e.movementY || 0; }
     });
     document.addEventListener('pointerlockchange', () => {
-      const was = this.locked;
-      this.locked = document.pointerLockElement === dom;
-      if (was && !this.locked && this.onLockLost) this.onLockLost();
+      this.locked = document.pointerLockElement === canvas;
     });
   }
 
-  lock() {
-    if (!this.locked) this.dom.requestPointerLock?.();
-  }
-  unlock() {
-    if (this.locked) document.exitPointerLock?.();
-  }
-  down(code) {
-    return this.keys.has(code);
-  }
-  // WASD as a wish: x = strafe right, z = forward (both -1..1).
-  moveWish() {
-    let x = 0, z = 0;
-    if (this.down('KeyW') || this.down('ArrowUp')) z += 1;
-    if (this.down('KeyS') || this.down('ArrowDown')) z -= 1;
-    if (this.down('KeyA') || this.down('ArrowLeft')) x -= 1;
-    if (this.down('KeyD') || this.down('ArrowRight')) x += 1;
-    return { x, z };
-  }
-  consumeMouse() {
-    const dx = this.mouseDX, dy = this.mouseDY;
+  down(code) { return this.keys.has(code); }
+  justPressed(code) { return this.pressed.has(code); }
+
+  // Called once per frame after every system has read the state: per-frame
+  // edges and mouse deltas do not leak into the next frame.
+  endFrame() {
+    this.pressed.clear();
     this.mouseDX = 0;
     this.mouseDY = 0;
-    return { dx, dy };
-  }
-  consumeClick() {
-    const c = this.clicked;
     this.clicked = false;
-    return c;
   }
 }

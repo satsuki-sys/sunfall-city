@@ -3,64 +3,68 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sunfall City — an open-world crime game</title>
+<title>Sunfall City</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #10131a; }
-  body { font-family: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif; color: #fff7e8; }
-  #app { position: fixed; inset: 0; }
-  #app canvas { display: block; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1d2733;
+    font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif; color: #f5efe2; }
+  #app, #app canvas { width: 100%; height: 100%; display: block; }
 
-  /* ---------- HUD ---------- */
-  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
-  .panel { background: rgba(12, 16, 24, 0.55); border: 1px solid rgba(255, 211, 77, 0.25); border-radius: 10px; backdrop-filter: blur(3px); }
-  #wallet { position: absolute; top: 14px; left: 14px; padding: 8px 14px; }
-  #cash-val { font-size: 24px; font-weight: 800; color: #ffd34d; letter-spacing: 0.5px; }
-  #disc-val { font-size: 13px; font-weight: 700; color: #ffbe3d; margin-top: 2px; letter-spacing: 0.4px; }
-  #health-wrap { width: 150px; height: 7px; background: rgba(255,255,255,0.18); border-radius: 4px; margin-top: 7px; overflow: hidden; }
-  #health-fill { height: 100%; width: 100%; background: #7dd069; border-radius: 4px; transition: width 0.2s; }
-  #wanted { position: absolute; top: 14px; right: 14px; padding: 8px 14px; text-align: right; min-width: 150px; }
-  #stars { font-size: 22px; color: #ffd34d; letter-spacing: 3px; opacity: 0; transition: opacity 0.3s; text-shadow: 0 0 8px rgba(255, 160, 40, 0.8); }
-  #bust-wrap { margin-top: 6px; opacity: 0; transition: opacity 0.2s; }
-  #bust-label { font-size: 10px; font-weight: 800; letter-spacing: 2px; color: #ff8a75; }
-  #bust-bar { height: 7px; background: rgba(255,255,255,0.18); border-radius: 4px; overflow: hidden; margin-top: 3px; }
-  #bust-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #ff9a3d, #e2483d); }
-  #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); padding: 9px 22px; text-align: center; max-width: 46vw; }
-  #objective-title { font-size: 17px; font-weight: 800; color: #ffd34d; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
-  #objective-sub { font-size: 12.5px; color: #ffe9c4; opacity: 0.92; margin-top: 2px; }
-  #objective-timer { font-size: 21px; font-weight: 800; color: #ffd34d; display: none; margin-top: 3px; font-variant-numeric: tabular-nums; }
-  #map-wrap { position: absolute; left: 14px; bottom: 14px; padding: 8px; }
-  #minimap { display: block; border-radius: 6px; }
-  #legend { display: flex; gap: 10px; margin-top: 6px; font-size: 10px; color: #ffe9c4; flex-wrap: wrap; max-width: 184px; }
-  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 3px; vertical-align: -1px; }
-  #speed-wrap { position: absolute; right: 16px; bottom: 16px; padding: 8px 16px; text-align: center; opacity: 0; transition: opacity 0.25s; }
-  #speed-val { font-size: 32px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
-  #speed-unit { font-size: 11px; letter-spacing: 2px; color: #ffd34d; font-weight: 700; }
-  #crosshair { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 20px; color: rgba(255, 247, 232, 0.9); opacity: 0; transition: opacity 0.2s; text-shadow: 0 0 4px #000; }
-  #toast-zone { position: absolute; bottom: 118px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
-  .toast { background: rgba(12, 16, 24, 0.78); border: 1px solid rgba(255, 211, 77, 0.4); color: #ffe9c4; padding: 8px 18px; border-radius: 20px; font-size: 14.5px; font-weight: 600; opacity: 0; transform: translateY(8px); transition: all 0.3s; white-space: nowrap; }
-  .toast.show { opacity: 1; transform: translateY(0); }
-  #brief-card { position: absolute; left: 50%; bottom: 34px; transform: translate(-50%, 16px); width: min(560px, 88vw); padding: 14px 20px; opacity: 0; transition: all 0.35s; pointer-events: none; }
-  #brief-card.show { opacity: 1; transform: translate(-50%, 0); }
-  #brief-title { font-size: 16px; font-weight: 800; color: #ffd34d; letter-spacing: 0.4px; }
-  #brief-text { font-size: 14px; line-height: 1.45; color: #fff3da; margin-top: 4px; }
-  #damage-vignette { position: fixed; inset: 0; pointer-events: none; z-index: 9; opacity: 0; transition: opacity 0.25s; background: radial-gradient(ellipse at center, transparent 52%, rgba(200, 30, 20, 0.5) 100%); }
-  #hint { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); font-size: 12px; color: rgba(255, 233, 196, 0.75); text-shadow: 0 1px 3px #000; }
+  /* --- HUD --- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  #hud-topleft { position: absolute; top: 16px; left: 18px; text-shadow: 0 2px 6px rgba(0,0,0,.55); }
+  #hud-cash { font-size: 30px; font-weight: 800; color: #ffd94e; letter-spacing: .5px; }
+  #hud-stars { font-size: 21px; color: #ffd94e; margin-top: 1px; transition: opacity .3s; }
+  #hud-discs { font-size: 14px; font-weight: 700; color: #ffbe4e; margin-top: 3px; letter-spacing: .6px; }
+  #hud-health { width: 170px; height: 9px; background: rgba(0,0,0,.45); border-radius: 5px; margin-top: 9px; overflow: hidden; }
+  #hud-health-fill { height: 100%; width: 100%; background: #7fc95e; border-radius: 5px; transition: width .2s; }
+  #hud-bust { width: 170px; margin-top: 6px; opacity: 0; transition: opacity .25s; }
+  #hud-bust-label { font-size: 10px; font-weight: 800; letter-spacing: 2px; color: #ff8a75; }
+  #hud-bust-track { height: 7px; background: rgba(0,0,0,.45); border-radius: 4px; overflow: hidden; }
+  #hud-bust-fill { height: 100%; width: 0%; background: #e84a30; }
+  #hud-topcenter { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    text-align: center; text-shadow: 0 2px 6px rgba(0,0,0,.6); max-width: 46vw; }
+  #hud-objective { font-size: 17px; font-weight: 700; color: #ffe9b8; }
+  #hud-timer { font-size: 22px; font-weight: 800; color: #fff; margin-top: 2px; min-height: 26px; }
+  #hud-topright { position: absolute; top: 16px; right: 18px; text-align: center; }
+  #minimap { border-radius: 10px; border: 2px solid rgba(255,255,255,.35); box-shadow: 0 4px 18px rgba(0,0,0,.4); }
+  #map-legend { font-size: 10px; color: #e8e2d2; margin-top: 4px; text-shadow: 0 1px 4px rgba(0,0,0,.7); letter-spacing: .3px; }
+  #hud-speed { position: absolute; right: 22px; bottom: 20px; font-size: 30px; font-weight: 800;
+    color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,.6); opacity: 0; transition: opacity .25s; }
+  #toasts { position: absolute; left: 18px; bottom: 22px; display: flex; flex-direction: column; gap: 7px; }
+  .toast { background: rgba(20,28,38,.82); border-left: 4px solid #ffc94e; color: #f5efe2;
+    padding: 9px 14px; border-radius: 6px; font-size: 14.5px; max-width: 380px;
+    opacity: 0; transform: translateY(6px); transition: all .35s; }
+  .toast.show { opacity: 1; transform: none; }
+  #briefing { position: absolute; left: 50%; bottom: 34px; transform: translate(-50%, 16px);
+    width: min(560px, 86vw); background: rgba(20,28,38,.9); border: 1px solid rgba(255,201,78,.5);
+    border-radius: 10px; padding: 15px 19px; opacity: 0; transition: all .4s; pointer-events: none; }
+  #briefing.show { opacity: 1; transform: translate(-50%, 0); }
+  #briefing-title { font-size: 17px; font-weight: 800; color: #ffc94e; margin-bottom: 5px; }
+  #briefing-body { font-size: 14.5px; line-height: 1.45; color: #f0e9d8; }
+  #damage-flash { position: fixed; inset: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(200,30,10,.55) 100%);
+    opacity: 0; pointer-events: none; z-index: 6; }
 
-  /* ---------- Screens ---------- */
-  .screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 30; text-align: center; }
-  #title-screen { background: linear-gradient(180deg, rgba(16, 20, 34, 0.25) 0%, rgba(16, 20, 34, 0.55) 78%, rgba(10, 12, 20, 0.88) 100%); }
-  #title-screen h1 { font-size: clamp(44px, 9vw, 92px); font-weight: 900; letter-spacing: 2px; color: #ffd34d; text-shadow: 0 4px 0 #c8452c, 0 10px 34px rgba(0,0,0,0.65); }
-  #title-screen .tag { font-size: clamp(14px, 2.2vw, 19px); color: #ffe9c4; margin: 10px 0 30px; text-shadow: 0 2px 8px #000; }
-  .btn { pointer-events: auto; cursor: pointer; border: 2px solid #ffd34d; background: rgba(20, 24, 36, 0.82); color: #ffd34d; font: inherit; font-size: 18px; font-weight: 800; letter-spacing: 1.5px; padding: 12px 38px; border-radius: 30px; margin: 5px; transition: all 0.15s; }
-  .btn:hover { background: #ffd34d; color: #1c1410; transform: translateY(-1px); }
-  .btn.ghost { border-color: rgba(255, 233, 196, 0.5); color: #ffe9c4; font-size: 15px; padding: 9px 26px; }
-  .controls { margin-top: 30px; font-size: 13.5px; line-height: 1.9; color: rgba(255, 233, 196, 0.88); text-shadow: 0 1px 4px #000; }
-  .controls b { color: #ffd34d; }
-  #pause-screen, #end-screen { background: rgba(10, 13, 20, 0.66); display: none; z-index: 25; }
-  #pause-screen h2, #end-screen h2 { font-size: 46px; font-weight: 900; letter-spacing: 3px; color: #ffd34d; text-shadow: 0 3px 0 #c8452c, 0 8px 26px rgba(0,0,0,0.6); }
-  #stats-line { font-size: 17px; color: #ffe9c4; margin: 14px 0 6px; }
-  #end-text { font-size: 16.5px; color: #ffe9c4; max-width: 520px; line-height: 1.55; margin: 14px 20px 22px; }
+  /* --- Screens --- */
+  .screen { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; z-index: 10; padding: 24px;
+    background: linear-gradient(180deg, rgba(24,36,54,.42) 0%, rgba(24,30,44,.66) 78%); }
+  .screen.show { display: flex; }
+  .screen h1 { font-size: clamp(46px, 9vw, 92px); font-weight: 900; letter-spacing: 3px;
+    color: #ffd94e; text-shadow: 0 4px 0 #c2541e, 0 10px 34px rgba(0,0,0,.55); }
+  .screen h2 { font-size: clamp(30px, 5vw, 46px); font-weight: 900; letter-spacing: 2px; color: #ffe9b8;
+    text-shadow: 0 3px 14px rgba(0,0,0,.6); }
+  .tagline { font-size: clamp(14px, 2.2vw, 19px); color: #f5efe2; margin: 10px 0 26px; text-shadow: 0 2px 8px rgba(0,0,0,.7); }
+  .btn { pointer-events: auto; cursor: pointer; border: 0; border-radius: 8px; padding: 13px 34px;
+    font-size: 17px; font-weight: 800; letter-spacing: 1px; margin: 5px;
+    background: #ffc94e; color: #40260a; box-shadow: 0 5px 18px rgba(0,0,0,.4); transition: transform .12s, background .12s; }
+  .btn:hover { background: #ffd970; transform: translateY(-1px); }
+  .btn.ghost { background: rgba(245,239,226,.16); color: #f5efe2; border: 1px solid rgba(245,239,226,.5); }
+  #btn-continue { display: none; }
+  #pause-stats { font-size: 17px; color: #ffe9b8; margin: 12px 0 4px; text-shadow: 0 2px 8px rgba(0,0,0,.7); }
+  .controls { margin-top: 24px; font-size: 13.5px; line-height: 1.85; color: #ddd5c0; text-shadow: 0 1px 5px rgba(0,0,0,.8); }
+  .controls b { color: #ffd94e; font-weight: 800; }
+  #end-text { font-size: 17px; color: #f5efe2; margin: 12px 0 22px; text-shadow: 0 2px 8px rgba(0,0,0,.7); }
 </style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }
@@ -68,78 +72,63 @@
 </head>
 <body>
 <div id="app"></div>
-<div id="damage-vignette"></div>
 
 <div id="hud">
-  <div id="wallet" class="panel">
-    <div id="cash-val">$60</div>
-    <div id="disc-val">◆ SUN DISCS 0/12</div>
-    <div id="health-wrap"><div id="health-fill"></div></div>
-  </div>
-  <div id="wanted" class="panel">
-    <div id="stars"></div>
-    <div id="bust-wrap">
-      <div id="bust-label">BUSTED</div>
-      <div id="bust-bar"><div id="bust-fill"></div></div>
+  <div id="hud-topleft">
+    <div id="hud-cash">$60</div>
+    <div id="hud-stars">☆☆☆☆☆</div>
+    <div id="hud-discs">◆ SUN DISCS 0/12</div>
+    <div id="hud-health"><div id="hud-health-fill"></div></div>
+    <div id="hud-bust">
+      <div id="hud-bust-label">BUSTED</div>
+      <div id="hud-bust-track"><div id="hud-bust-fill"></div></div>
     </div>
   </div>
-  <div id="objective" class="panel">
-    <div id="objective-title">Sunfall City</div>
-    <div id="objective-sub"></div>
-    <div id="objective-timer">0:00</div>
+  <div id="hud-topcenter">
+    <div id="hud-objective"></div>
+    <div id="hud-timer"></div>
   </div>
-  <div id="map-wrap" class="panel">
-    <canvas id="minimap" width="184" height="184"></canvas>
-    <div id="legend">
-      <span><span class="dot" style="background:#ffb52e"></span>Sun Disc</span>
-      <span><span class="dot" style="background:#ffd34d"></span>Objective</span>
-      <span><span class="dot" style="background:#4d8dff"></span>Police</span>
-      <span><span class="dot" style="background:#63e06a"></span>Fare</span>
-    </div>
+  <div id="hud-topright">
+    <canvas id="minimap" width="176" height="176"></canvas>
+    <div id="map-legend">◆ disc · ● objective · ● PD · ▲ you</div>
   </div>
-  <div id="speed-wrap" class="panel">
-    <div id="speed-val">0</div>
-    <div id="speed-unit">KM/H</div>
-  </div>
-  <div id="crosshair">＋</div>
-  <div id="toast-zone"></div>
-  <div id="brief-card" class="panel">
-    <div id="brief-title"></div>
-    <div id="brief-text"></div>
-  </div>
-  <div id="hint">WASD move · F car · click shoot · P pause</div>
+  <div id="hud-speed"></div>
+  <div id="toasts"></div>
+  <div id="briefing"><div id="briefing-title"></div><div id="briefing-body"></div></div>
 </div>
+<div id="damage-flash"></div>
 
-<div id="title-screen" class="screen">
+<div class="screen" id="title-screen">
   <h1>SUNFALL CITY</h1>
-  <div class="tag">One city, one cooler, one borrowed car — and the whole Sunfall PD.</div>
+  <p class="tagline">A seaside city at golden hour, and every car in it is yours to take.</p>
   <div>
-    <button id="btn-new" class="btn">NEW GAME</button>
-    <button id="btn-continue" class="btn ghost">CONTINUE</button>
+    <button class="btn" id="btn-play">NEW GAME</button>
+    <button class="btn ghost" id="btn-continue">CONTINUE</button>
   </div>
-  <div class="controls">
-    <b>WASD</b> move · <b>Mouse</b> look (click to lock) · <b>Shift</b> sprint · <b>F</b> enter / exit car<br>
+  <p class="controls">
+    <b>WASD</b> move · <b>Mouse</b> look · <b>Shift</b> sprint · <b>F</b> enter / exit car ·
     <b>W/S</b> drive · <b>A/D</b> steer · <b>Space</b> handbrake · <b>H</b> horn · <b>Click</b> shoot · <b>P</b> pause
-  </div>
+  </p>
 </div>
 
-<div id="pause-screen" class="screen">
+<div class="screen" id="pause-screen">
   <h2>PAUSED</h2>
-  <div id="stats-line">Cash $0 · Taxi fares 0 · Sun discs 0/12 · Not started</div>
+  <p id="pause-stats"></p>
   <div>
-    <button id="btn-resume" class="btn">RESUME</button>
-    <button id="btn-restart" class="btn ghost">NEW GAME</button>
+    <button class="btn" id="btn-resume">RESUME</button>
+    <button class="btn ghost" id="btn-quit-title">TITLE</button>
   </div>
-  <div class="controls">
-    <b>WASD</b> move · <b>Mouse</b> look · <b>Shift</b> sprint · <b>F</b> enter / exit car<br>
-    <b>W/S</b> drive · <b>A/D</b> steer · <b>Space</b> handbrake · <b>H</b> horn · <b>Click</b> shoot · <b>P</b> pause
-  </div>
+  <p class="controls">
+    <b>WASD</b> move · <b>Mouse</b> look (click the game to lock the pointer) · <b>Shift</b> sprint<br>
+    <b>F</b> enter / exit car · <b>W/S</b> throttle &amp; brake · <b>A/D</b> steer · <b>Space</b> handbrake<br>
+    <b>H</b> horn · <b>Click</b> shoot · <b>P</b> pause · Lose the police by breaking their line of sight
+  </p>
 </div>
 
-<div id="end-screen" class="screen">
+<div class="screen" id="end-screen">
   <h2 id="end-title">DOWNED</h2>
-  <div id="end-text"></div>
-  <button id="btn-respawn" class="btn">RESPAWN</button>
+  <p id="end-text"></p>
+  <button class="btn" id="btn-respawn">RESPAWN</button>
 </div>
 
 <script type="module" src="./src/main.js"></script>

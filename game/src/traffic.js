@@ -1,121 +1,155 @@
-// Traffic: ordinary Sunfall drivers circling their blocks on the correct
-// lanes. Each follows the four far-side lane corners around one block with
-// pure-pursuit steering, keeps a smooth gap to whatever is ahead instead of
-// slamming the brakes, eases off at corners when cross traffic is close,
-// and honks at the player when blocked past that driver's patience.
+// traffic.js — the city's moving cars. Each one holds a lane on the grid,
+// keeps a smooth gap to the car ahead instead of slamming its brakes, eases
+// off when cross traffic is near a junction, stops for a pedestrian in the
+// road and honks when blocked past that driver's patience.
 
-import * as THREE from 'three';
-import { BLOCK, LANE_OFF, PALETTE, clamp, wrapAngle } from './config.js';
+import { AVENUES, STREETS, CAR_COLORS, clamp, wrapAngle, mulberry32 } from './config.js';
 import { Car } from './vehicles.js';
 
-// The four lane corners around a block, in driving order (block on the right).
-export function blockLoop(cx, cz) {
-  const x0 = cx - BLOCK / 2, x1 = cx + BLOCK / 2;
-  const z0 = cz - BLOCK / 2, z1 = cz + BLOCK / 2;
-  return [
-    new THREE.Vector3(x1 + LANE_OFF, 0, z1 + LANE_OFF),
-    new THREE.Vector3(x1 + LANE_OFF, 0, z0 - LANE_OFF),
-    new THREE.Vector3(x0 - LANE_OFF, 0, z0 - LANE_OFF),
-    new THREE.Vector3(x0 - LANE_OFF, 0, z1 + LANE_OFF),
-  ];
-}
-
-const CELLS_X = [-160, -96, -32, 32, 96, 160];
-const CELLS_Z = [-160, -96, -32, 32, 96];
+const LANE = 3.6;
+const CRUISE = 11;
 
 export class Traffic {
-  constructor(scene, rng, count = 10) {
-    this.scene = scene;
-    this.drivers = [];
-    for (let i = 0; i < count; i++) {
-      const cx = rng.pick(CELLS_X), cz = rng.pick(CELLS_Z);
-      const wp = blockLoop(cx, cz);
-      const seg = rng.int(0, 3);
-      const a = wp[seg], b = wp[(seg + 1) % 4];
-      const t = rng.range(0.15, 0.85);
-      const x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t;
-      const angle = Math.atan2(b.x - a.x, -(b.z - a.z));
-      const car = new Car(scene, {
-        x, z, angle,
-        color: rng.pick(PALETTE.carPaints),
-        maxSpeed: 13, accel: 8, occupant: 'traffic',
-      });
-      car.driver = {
-        wp, i: (seg + 1) % 4, corner: { x: cx, z: cz },
-        cruise: rng.range(7.5, 11.5),
-        patience: rng.range(2, 5.5),
-        blockedTime: 0,
-      };
-      this.drivers.push(car);
+  constructor(scene, seed, colliders) {
+    this.colliders = colliders;
+    this.rng = mulberry32(seed * 31 + 7);
+    this.cars = [];
+    const kinds = ['sedan', 'hatch', 'sedan', 'taxi', 'sedan', 'hatch', 'sedan', 'sedan', 'hatch', 'sedan'];
+    for (let i = 0; i < 10; i++) {
+      const car = new Car(kinds[i], CAR_COLORS[(this.rng() * CAR_COLORS.length) | 0]);
+      car.driver = 'traffic';
+      this.placeOnGrid(car, true);
+      scene.add(car.mesh);
+      this.cars.push(car);
     }
   }
 
-  cars() {
-    return this.drivers;
+  // Put a car on a random avenue or street, in the right-hand lane.
+  placeOnGrid(car, anywhere = false) {
+    const rng = this.rng;
+    const onAvenue = rng() < 0.5;
+    const dir = rng() < 0.5 ? 1 : -1;
+    if (onAvenue) {
+      const a = AVENUES[(rng() * AVENUES.length) | 0];
+      const z = anywhere ? -100 + rng() * 200 : (dir > 0 ? -108 : 108);
+      car.place(a - dir * LANE, z, dir > 0 ? 0 : Math.PI);
+      car.road = { axis: 'z', at: a, dir };
+    } else {
+      const s = STREETS[(rng() * STREETS.length) | 0];
+      const x = anywhere ? -100 + rng() * 200 : (dir > 0 ? -108 : 108);
+      car.place(x, s + dir * LANE, dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+      car.road = { axis: 'x', at: s, dir };
+    }
+    car.stuckFor = 0;
+    car.honkPatience = 2 + rng() * 4;
+    car.blockedFor = 0;
+    car.junctionAt = undefined;
   }
 
-  // The player took this car: it stops being traffic.
-  release(car) {
-    const i = this.drivers.indexOf(car);
-    if (i >= 0) this.drivers.splice(i, 1);
-    car.driver = null;
+  // The lane centre for the car's current road and direction.
+  laneTarget(car) {
+    const r = car.road;
+    if (r.axis === 'z') return { x: r.at - r.dir * LANE, z: car.pos.z + r.dir * 16 };
+    return { x: car.pos.x + r.dir * 16, z: r.at + r.dir * LANE };
+  }
+
+  // The next junction along the direction of travel, as a distance.
+  junctionAhead(car) {
+    const c = this.nextJunctionCoord(car);
+    if (c === null) return Infinity;
+    const along = car.road.axis === 'z' ? car.pos.z : car.pos.x;
+    return (c - along) * car.road.dir;
+  }
+
+  // The coordinate of the next cross road ahead of the car, or null.
+  nextJunctionCoord(car) {
+    const r = car.road;
+    const along = r.axis === 'z' ? car.pos.z : car.pos.x;
+    const roads = r.axis === 'z' ? STREETS : AVENUES;
+    let best = null, bestD = Infinity;
+    for (const c of roads) {
+      const d = (c - along) * r.dir;
+      if (d > 1 && d < bestD) { bestD = d; best = c; }
+    }
+    return best;
   }
 
   update(dt, world) {
-    const obstacles = world.allCars();
-    for (const car of this.drivers) {
-      const d = car.driver;
-      const target = d.wp[d.i];
-      const dx = target.x - car.pos.x, dz = target.z - car.pos.z;
-      const distToWp = Math.hypot(dx, dz);
-      if (distToWp < 7) d.i = (d.i + 1) % 4;
+    const all = world.allCars();
+    for (const car of this.cars) {
+      if (car.driver === 'player') continue;   // stolen: the player drives it now
+      const r = car.road;
+      const target = this.laneTarget(car);
+      const wantHeading = Math.atan2(target.x - car.pos.x, target.z - car.pos.z);
+      const steer = clamp(wrapAngle(wantHeading - car.heading) * 1.6, -1, 1);
 
-      const desired = Math.atan2(dx, -dz);
-      const steer = clamp(wrapAngle(desired - car.angle) * 2.0, -1, 1);
+      let desired = CRUISE;
+      let blocked = false;
 
-      // Gap keeping: the nearest thing ahead in my lane sets my speed.
-      const fx = Math.sin(car.angle), fz = -Math.cos(car.angle);
-      const rx = -fz, rz = fx;
-      let want = d.cruise;
-      let blocker = null;
-      for (const other of obstacles) {
+      // Gap-keeping: match the car ahead, with room to spare.
+      const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
+      for (const other of all) {
         if (other === car) continue;
-        const ox = other.pos.x - car.pos.x, oz = other.pos.z - car.pos.z;
-        const lon = ox * fx + oz * fz;
-        const lat = ox * rx + oz * rz;
-        if (lon > 0.5 && lon < 14 && Math.abs(lat) < 2.0) {
-          const follow = lon < 5 ? 0 : other.speed + (lon - 5) * 0.55;
-          if (follow < want) {
-            want = Math.max(0, follow);
-            blocker = other;
-          }
+        const dx = other.pos.x - car.pos.x, dz = other.pos.z - car.pos.z;
+        const ahead = dx * fx + dz * fz;
+        const lateral = Math.abs(dx * fz - dz * fx);
+        if (ahead > 0 && ahead < 15 && lateral < 2.3) {
+          desired = Math.min(desired, other.speed + (ahead - 7) * 0.55);
+          if (ahead < 5) desired = Math.min(desired, other.speed * 0.5);
         }
       }
-      // Junction caution: slow for anything crossing near my corner.
-      if (distToWp < 11) {
-        for (const other of obstacles) {
+      // A person in the road: stop, then lean on the horn.
+      const p = world.player;
+      if (!p.driving) {
+        const dx = p.pos.x - car.pos.x, dz = p.pos.z - car.pos.z;
+        const ahead = dx * fx + dz * fz;
+        const lateral = Math.abs(dx * fz - dz * fx);
+        if (ahead > 0 && ahead < 8 && lateral < 1.9) { desired = 0; blocked = true; }
+      }
+      // Junction caution: cross traffic near the box means a gentle slow.
+      const j = this.junctionAhead(car);
+      if (j < 11) {
+        const jc = r.axis === 'z'
+          ? { x: r.at, z: car.pos.z + r.dir * j }
+          : { x: car.pos.x + r.dir * j, z: r.at };
+        for (const other of all) {
           if (other === car) continue;
-          const cd = Math.hypot(other.pos.x - target.x, other.pos.z - target.z);
-          if (cd < 8.5 && Math.abs(other.speed) > 0.5) {
-            want = Math.min(want, 3.2);
-            break;
+          if (Math.abs(other.pos.x - jc.x) < 9 && Math.abs(other.pos.z - jc.z) < 9
+              && Math.abs(Math.sin(other.heading - car.heading)) > 0.7 && Math.abs(other.speed) > 1) {
+            desired = Math.min(desired, 4.5);
           }
         }
-      }
-      // Honking: blocked by the player's car past my patience.
-      if (blocker && blocker.occupant === 'player' && want < 0.6) {
-        d.blockedTime += dt;
-        if (d.blockedTime > d.patience) {
-          world.audio.horn(0.3 + Math.random() * 0.25);
-          d.blockedTime = -1.5;
-          d.patience = 2 + Math.random() * 3.5;
-        }
-      } else {
-        d.blockedTime = Math.max(0, d.blockedTime - dt * 0.5);
       }
 
-      const throttle = car.speed < want ? 0.75 : car.speed > want + 0.8 ? -0.55 : 0;
-      car.update(dt, { throttle, steer, handbrake: false }, world.colliders);
+      car.blockedFor = blocked ? car.blockedFor + dt : 0;
+      if (blocked && car.blockedFor > car.honkPatience) {
+        car.blockedFor = 0;
+        car.honkPatience = 2 + this.rng() * 4;
+        if (world.audio) world.audio.horn();
+      }
+
+      const throttle = clamp((desired - car.speed) * 0.3, -1, 1);
+      car.update(dt, { throttle, steer, handbrake: false }, this.colliders, all);
+
+      // Crossing a junction: sometimes turn onto the cross road. The lane
+      // target then swings the car around the corner on its own.
+      const along = r.axis === 'z' ? car.pos.z : car.pos.x;
+      if (car.junctionAt === undefined) car.junctionAt = this.nextJunctionCoord(car);
+      if (car.junctionAt !== null && (along - car.junctionAt) * r.dir > 0.5) {
+        const cross = car.junctionAt;
+        car.junctionAt = undefined;
+        if (this.rng() < 0.42) {
+          const dir = this.rng() < 0.5 ? 1 : -1;
+          car.road = r.axis === 'z' ? { axis: 'x', at: cross, dir } : { axis: 'z', at: cross, dir };
+        }
+      }
+
+      // Off the map or wedged: quietly re-enter at an edge.
+      if (Math.abs(car.pos.x) > 130 || Math.abs(car.pos.z) > 150 || car.pos.z > 112) this.placeOnGrid(car);
+      if (Math.abs(car.speed) < 0.2 && desired > 2) {
+        car.stuckFor += dt;
+        if (car.stuckFor > 9) this.placeOnGrid(car);
+      } else car.stuckFor = 0;
     }
   }
 }

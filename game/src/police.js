@@ -1,146 +1,77 @@
-// Sunfall PD: a five-star wanted level, cruisers that hunt in packs, and
-// the bust meter that fills while a cruiser has you slow and close. Stars
-// fade when you stop committing crimes — faster when no cruiser can see
-// you — and a full meter means a fine and a walk out of the station.
+// police.js — Sunfall PD. Cruisers are spawned by the world as the wanted
+// level rises; this system drives them: pursuit steering that aims where
+// the player is going, not just where they are, a willingness to ram, and
+// the patience to give up a chase that has gone cold and far away.
 
 import { clamp, wrapAngle } from './config.js';
 import { Car } from './vehicles.js';
 
 export class Police {
-  constructor(scene, world) {
+  constructor(scene, colliders) {
     this.scene = scene;
-    this.world = world;
-    this.wanted = 0;          // 0..5, fractional while decaying
-    this.lastCrimeT = 99;     // seconds since the last fresh crime
+    this.colliders = colliders;
     this.cruisers = [];
-    this.bust = 0;            // 0..1
-    this.spawnT = 0;
   }
 
-  stars() {
-    return Math.ceil(this.wanted - 1e-6);
+  // Keep the fleet sized to the wanted level: one cruiser a star, plus the
+  // one that is always somewhere in the city once trouble starts.
+  setWanted(stars, playerPos) {
+    const want = stars <= 0 ? 0 : Math.min(5, stars);
+    while (this.cruisers.length < want) {
+      const car = new Car('cruiser', 0xf2f2f2);
+      car.driver = 'police';
+      // Enter from a road a good distance away, never on top of the player.
+      const ang = (this.cruisers.length * 2.4) + 0.7;
+      const x = clamp(playerPos.x + Math.cos(ang) * 62, -108, 108);
+      const z = clamp(playerPos.z + Math.sin(ang) * 62, -108, 108);
+      car.place(Math.round(x / 52) * 52 + 3.6, Math.round(z / 52) * 52, ang);
+      this.scene.add(car.mesh);
+      this.cruisers.push(car);
+    }
+    while (this.cruisers.length > want) {
+      const car = this.cruisers.pop();
+      this.scene.remove(car.mesh);
+    }
   }
-  addCrime(amount, floor = 0) {
-    this.wanted = clamp(Math.max(this.wanted + amount, floor), 0, 5);
-    this.lastCrimeT = 0;
-  }
-  setWanted(n) {
-    this.wanted = clamp(n, 0, 5);
-    this.lastCrimeT = 0;
-  }
-  clear() {
-    this.wanted = 0;
-    this.bust = 0;
-  }
-  nearestDist() {
-    const p = this.world.playerPos();
-    let best = Infinity;
+
+  nearestDist(pos) {
+    let best = null;
     for (const c of this.cruisers) {
-      const d = Math.hypot(c.pos.x - p.x, c.pos.z - p.z);
-      if (d < best) best = d;
+      const d = Math.hypot(c.pos.x - pos.x, c.pos.z - pos.z);
+      if (best === null || d < best) best = d;
     }
     return best;
   }
 
-  spawnCruiser() {
-    const p = this.world.playerPos();
-    // Appear on a road 70–95 m away, never inside the player's view bubble.
-    const avenues = [-192, -128, -64, 0, 64, 128, 192];
-    const streets = [-192, -128, -64, 0, 64, 128];
-    let x, z, angle;
-    if (Math.random() < 0.5) {
-      x = avenues[Math.floor(Math.random() * avenues.length)];
-      z = clamp(p.z + (Math.random() < 0.5 ? -1 : 1) * (70 + Math.random() * 25), -230, 140);
-      angle = z < p.z ? Math.PI : 0;
-    } else {
-      z = streets[Math.floor(Math.random() * streets.length)];
-      x = clamp(p.x + (Math.random() < 0.5 ? -1 : 1) * (70 + Math.random() * 25), -230, 230);
-      angle = x < p.x ? Math.PI / 2 : -Math.PI / 2;
-    }
-    const car = new Car(this.scene, {
-      x, z, angle, color: 0xf2f4f6, police: true, maxSpeed: 31, accel: 14.5, occupant: 'police',
-    });
-    car.stuckT = 0;
-    this.cruisers.push(car);
-    return car;
-  }
-
-  update(dt) {
-    const world = this.world;
-    this.lastCrimeT += dt;
-    // Decay: slow while cruisers are near, brisk once you've broken away.
-    if (this.wanted > 0 && this.lastCrimeT > 10) {
-      const near = this.nearestDist();
-      const rate = near > 55 ? 1 / 7 : 1 / 26;
-      this.wanted = Math.max(0, this.wanted - dt * rate);
-    }
-    const want = this.wanted <= 0 ? 0 : clamp(Math.ceil(this.wanted) + (this.wanted >= 3.5 ? 1 : 0), 1, 5);
-    this.spawnT -= dt;
-    if (this.cruisers.length < want && this.spawnT <= 0) {
-      this.spawnCruiser();
-      this.spawnT = 1.6;
-    }
-    if (this.cruisers.length > want) {
-      // Dismiss the farthest cruiser once it is well away.
-      let far = null, farD = 0;
-      const p = world.playerPos();
-      for (const c of this.cruisers) {
-        const d = Math.hypot(c.pos.x - p.x, c.pos.z - p.z);
-        if (d > farD) { farD = d; far = c; }
-      }
-      if (far && farD > 80) {
-        far.dispose(this.scene);
-        this.cruisers.splice(this.cruisers.indexOf(far), 1);
-      }
-    }
-
-    const target = world.playerPos();
-    const playerSpeed = world.playerSpeed();
-    let busting = false;
-    for (const c of this.cruisers) {
-      const dx = target.x - c.pos.x, dz = target.z - c.pos.z;
-      const dist = Math.hypot(dx, dz);
-      let desired = Math.atan2(dx, -dz);
-      // Building sense: if the straight line ahead is walled, bend the hunt.
-      const aheadX = c.pos.x + Math.sin(c.angle) * 7, aheadZ = c.pos.z - Math.cos(c.angle) * 7;
-      for (const b of world.colliders) {
-        if (aheadX > b.minX - 1 && aheadX < b.maxX + 1 && aheadZ > b.minZ - 1 && aheadZ < b.maxZ + 1) {
-          desired += 0.85;
-          break;
-        }
-      }
-      const steer = clamp(wrapAngle(desired - c.angle) * 1.7, -1, 1);
+  update(dt, world) {
+    const p = world.player;
+    const target = p.driving ? p.car.pos : p.pos;
+    const tv = p.driving ? p.car.vel : null;
+    const all = world.allCars();
+    for (const car of this.cruisers) {
+      // Aim at where the target will be a moment from now.
+      const lead = tv ? clamp(Math.hypot(tv.x, tv.y) * 0.045, 0, 0.7) : 0;
+      const tx = target.x + (tv ? tv.x * lead * 10 : 0);
+      const tz = target.z + (tv ? tv.y * lead * 10 : 0);
+      const wantHeading = Math.atan2(tx - car.pos.x, tz - car.pos.z);
+      const steer = clamp(wrapAngle(wantHeading - car.heading) * 1.8, -1, 1);
+      const dist = Math.hypot(target.x - car.pos.x, target.z - car.pos.z);
+      // Full speed in pursuit; back off a touch when alongside so the ram
+      // reads as a nudge, not a teleport.
       let throttle = 1;
-      if (dist < 6) throttle = playerSpeed > 1 ? 0.55 : 0.12;
-      else if (Math.abs(wrapAngle(desired - c.angle)) > 1.9) throttle = -0.7; // turn around
-      c.update(dt, { throttle, steer, handbrake: false }, world.colliders);
-      // Unstick: a wedged cruiser is quietly replaced by a fresh one.
-      if (Math.abs(c.speed) < 0.6 && dist > 16) {
-        c.stuckT += dt;
-        if (c.stuckT > 3) {
-          c.dispose(this.scene);
-          this.cruisers.splice(this.cruisers.indexOf(c), 1);
-          this.spawnCruiser();
-          continue;
-        }
-      } else c.stuckT = 0;
-      if (dist < 9.5 && playerSpeed < 2.5) busting = true;
+      if (dist < 4 && Math.abs(car.speed) > Math.abs(p.driving ? p.car.speed : 0) + 4) throttle = 0.2;
+      car.update(dt, { throttle, steer, handbrake: dist < 9 && Math.abs(wrapAngle(wantHeading - car.heading)) > 1.6 }, this.colliders, all);
+      // A cruiser left far behind re-enters from a nearer road.
+      if (dist > 150) {
+        const ang = Math.atan2(car.pos.z - target.z, car.pos.x - target.x) + 0.9;
+        car.place(
+          clamp(target.x + Math.sin(ang) * 58, -108, 108),
+          clamp(target.z + Math.cos(ang) * 58, -108, 104),
+          ang,
+        );
+      }
     }
-
-    // The bust meter: fills under a cruiser's nose, drains when you run.
-    if (busting && world.mode === 'playing') {
-      this.bust = Math.min(1, this.bust + dt / 2.4);
-      if (this.bust >= 1) world.onBusted();
-    } else {
-      this.bust = Math.max(0, this.bust - dt / 1.1);
-    }
-    // Siren wash follows the nearest cruiser.
-    const near = this.nearestDist();
-    world.audio.setSiren(this.wanted > 0 && near !== Infinity ? clamp(1 - near / 65, 0, 1) : 0);
   }
 
-  disposeAll() {
-    for (const c of this.cruisers) c.dispose(this.scene);
-    this.cruisers = [];
-  }
+  clear() { this.setWanted(0, { x: 0, z: 0 }); }
 }
